@@ -15,19 +15,19 @@ The MC33 library is an open source software. The distribution and use rights are
 
 #### FILES:
 
-Makefile (Linux or MinGW/msys GCC makefile)
-MakefileMSVC.mak (MSVC NMAKE makefile)
-compileMSVC.bat (batch script to compile with MSVC)
-include/marching_cubes_33.h (header file)
-source/marching_cubes_33.c (contains the code)
-source/MC33_LookUpTable.h (Triangulation pattern for each MC33 case)
-source/MC33_util_grd.c (contains additional code to read and manage grid files)
-source/libMC33.c (library source file)
-FLTK_example/TestMC33.cpp (Example of use. FLTK library is required)
-FLTK_example/makefileMinGW-w64.mak (MinGW/msys GCC makefile)
-FLTK_example/makefiledebian.mak (Debian GCC makefile)
-GLUT_example/TestMC33_glut.c (Example of use. GLUT or FREEGLUT library is required)
-GLUT_example/makefileMinGW-w64.mak (MinGW/msys GCC makefile)
+Makefile (Linux or MinGW/msys GCC makefile)<br>
+MakefileMSVC.mak (MSVC NMAKE makefile)<br>
+compileMSVC.bat (batch script to compile with MSVC)<br>
+include/marching_cubes_33.h (header file)<br>
+source/marching_cubes_33.c (contains the code)<br>
+source/MC33_LookUpTable.h (Triangulation pattern for each MC33 case)<br>
+source/MC33_util_grd.c (contains additional code to read and manage grid files)<br>
+source/libMC33.c (library source file)<br>
+FLTK_example/TestMC33.cpp (Example of use. FLTK library is required)<br>
+FLTK_example/makefileMinGW-w64.mak (MinGW/msys GCC makefile)<br>
+FLTK_example/makefiledebian.mak (Debian GCC makefile)<br>
+GLUT_example/TestMC33_glut.c (Example of use. GLUT or FREEGLUT library is required)<br>
+GLUT_example/makefileMinGW-w64.mak (MinGW/msys GCC makefile)<br>
 GLUT_example/makefiledebian.mak (Debian GCC makefile)
 
 ---
@@ -245,5 +245,5 @@ See [this link](https://stackoverflow.com/questions/65066235/estimating-size-of-
 
 ---
 
-See [MC33_libraries](https://facyt-quimicomp.neocities.org/MC33_libraries.html) web page
-mail to: <dvega@uc.edu.ve>
+See [MC33_libraries](https://facyt-quimicomp.neocities.org/MC33_libraries.html) web page.<br>
+Mail to: <dvega@uc.edu.ve>
