@@ -11,6 +11,9 @@ Vega, D., Abache, J., Coll, D., [A Fast and Memory-Saving Marching Cubes 33 impl
 
 The MC33 library is an open source software. The distribution and use rights are under the terms of the [MIT license](https://opensource.org/licenses/MIT), described in the file "LICENSE.txt".
 
+
+![GLUT example](https://repository-images.githubusercontent.com/469927258/b20e020b-393e-40d2-b02d-0926ff7f0d39 "Screenshot of the GLUT example")
+
 ---
 
 #### FILES:
@@ -64,7 +67,7 @@ There are 3 options that can be modified before compiling the library. You can d
 
 #### INSTALLING:
 
-1. Compile the libMC33.cpp file as a static C/C++ library:
+1. Compile the libMC33.cpp file as a static C library:
 	- A GCC makefile is supplied with the library. In a Linux terminal or in msys2 mingw console go to the folder where the Makefile file is, and type: make
 	- If you are using Visual Studio, run the batch script compileMSVC.bat to compile for x64 target platform. If you want to compile for win32 platform, open a cmd window in the folder where compileMSVC.bat exists and type: .\compileMSVC x86
 
