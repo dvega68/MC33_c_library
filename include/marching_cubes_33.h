@@ -16,6 +16,7 @@
 	August 2021
 	December 2021
 	January 2022
+	September 2023
 	This library is a modified version of the library described in:
 	Vega, D., Abache, J., Coll, D., A Fast and Memory Saving Marching Cubes 33
 	implementation with the correct interior test, Journal of Computer Graphics
@@ -61,7 +62,7 @@
 //#define GRD_orthogonal // If defined, the library only works with orthogonal grids.
 /*****************************************************************************/
 #define MC33C_VERSION_MAJOR 5
-#define MC33C_VERSION_MINOR 2
+#define MC33C_VERSION_MINOR 3
 
 #if defined(integer_GRD)
 #if size_type_GRD == 4
@@ -188,6 +189,7 @@ Red 128, green 0, blue 255.
 */
 int DefaultColorMC = 0xff5c5c5c;//gray RGB color as unsigned char [3]
 
+#ifndef GRD_orthogonal
 #ifndef multTA_bf_code
 #define multTA_bf_code
 //c = Ab, A is a 3x3 upper triangular matrix. If t != 0, A is transposed.
@@ -227,6 +229,7 @@ void _multA_bf(const double (*A)[3], float* b, float* c, int t)
 }
 void (*mult_Abf)(const double (*)[3], float *, float *, int) = _multA_bf;
 #endif // multTA_bf_code
+#endif // GRD_orthogonal
 #endif // compiling_libMC33
 
 /******************************************************************
