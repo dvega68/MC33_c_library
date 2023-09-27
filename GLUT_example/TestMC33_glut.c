@@ -2,6 +2,7 @@
 	File: TestMC33_glut.c
 	Programmed by: David Vega - dvega@uc.edu.ve
 	December 2021
+	September 2023
 	This is an open source code. The distribution and use rights are under the terms of the MIT license (https://opensource.org/licenses/MIT)
 */
 
@@ -788,8 +789,10 @@ int open_grid_file(const char *s) {
 // set the scale and center of the graphic window
 void set_scale() {
 	float r[3] = {0.5f*G->L[0], 0.5f*G->L[1], 0.5f*G->L[2]};
+#ifndef GRD_orthogonal
 	if (G->nonortho)
 		mult_Abf(G->_A, r, r, 0);
+#endif
 	cX = r[0] + G->r0[0];
 	cY = r[1] + G->r0[1];
 	cZ = r[2] + G->r0[2];
@@ -912,11 +915,10 @@ int main(int argc, char **argv) {
 		puts("\t8. Three intersecting tori, isovalue 0");
 		puts("\t9. DecoCube, isovalue 0");
 		puts("\t0. Leo cube?, isovalue 0");
-		char c;
 		do
-			c = getchar();
-		while (c < '0' || c > '9');
-		switch (c) {
+			i = getchar();
+		while (!i);
+		switch (i) {
 			case '1':
 				G = generate_grid_from_fn(-3.0, -3.0, -3.0, 3.0, 3.0, 3.0, 0.04, 0.04, 0.04, f1);
 				break;
@@ -953,6 +955,7 @@ int main(int argc, char **argv) {
 	}
 	if (i) {
 		display_grid_info();
+		i = 1;
 		glutInit(&i, argv);
 		glutInitWindowSize(WIDTH, HEIGHT);
 		glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);

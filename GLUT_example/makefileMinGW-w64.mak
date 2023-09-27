@@ -2,7 +2,7 @@
 CC       = gcc
 SOURCE   = TestMC33_glut.c
 OBJ      = $(SOURCE:.c=.o)
-LIBS     = -static -lfreeglut_static -lglu32 -lopengl32 -lgdi32 -lwinmm -lm -m64 -s
+LIBS     = -static -lfreeglut -lglu32 -lopengl32 -lgdi32 -lwinmm -lm -m64 -s
 CINCS    =
 BIN      = TestMC33_glut
 OPTIM		 = -Ofast -m64 -Wall -Wextra -funroll-loops
