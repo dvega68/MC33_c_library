@@ -4,15 +4,12 @@
 
 #### INFO:
 
-MC33 library version 5.2
+MC33 library version 5.3
 
 This library is a new version of the MC33 library of the paper:  
 Vega, D., Abache, J., Coll, D., [A Fast and Memory-Saving Marching Cubes 33 implementation with the correct interior test](http://jcgt.org/published/0008/03/01), *Journal of Computer Graphics Techniques (JCGT)*, vol. 8, no. 3, 1-18, 2019.
 
 The MC33 library is an open source software. The distribution and use rights are under the terms of the [MIT license](https://opensource.org/licenses/MIT), described in the file "LICENSE.txt".
-
-
-![GLUT example](https://repository-images.githubusercontent.com/469927258/b20e020b-393e-40d2-b02d-0926ff7f0d39 "Screenshot of the GLUT example")
 
 ---
 
@@ -108,7 +105,7 @@ path/fltk-1.X.Y/fltk-config --compile TestMC33.cpp
 
 The makefiles use the -Ofast optimization option and the fltk-config script uses a lower optimization level.
 
-In the GLUT example, the file containing the grid must be passed to the program on the command line, and no other grid files can be read from the running program. The grid file can be dragged and dropped into the executable in the Windows File Explorer. Examples of usage of the `generate_grid_from_fn` function of the grid3d class were included in this code, and are available if the grid file is not specified.
+In the GLUT example, the file containing the grid must be passed to the program on the command line (you can also drag and drop the grid file into the executable file in Windows File Explorer). No other grid files can be read from the running program. This example uses the `generate_grid_from_fn` function (found in the MC33_util_grd.c file) to generate grids from math functions if the grid file is not specified.
 
 ---
 
@@ -242,7 +239,7 @@ To calculate the size (in bytes) of an isosurface, without calculating the isosu
 ```c
 	unsigned long long size = size_of_isosurface(M, iso, nV, nT);
 ```
-where M is a pointer to the MC33 structure, iso is the isovalue (a "`float`"), nV and nT are unsigned integers that will contain the number of vertices and triangles, respectively. 
+where M is a pointer to the MC33 structure, iso is the isovalue (a "`float`"), nV and nT are pointers to the unsigned integers that will contain the number of vertices and triangles, respectively.
 
 See [this link](https://stackoverflow.com/questions/65066235/estimating-size-of-marching-cubes-output-geometry)
 
