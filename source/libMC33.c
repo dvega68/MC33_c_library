@@ -6,6 +6,7 @@
 	June 2019.
 	February 2020
 	August 2021
+	September 2023
 	Only this file must be included in a project to compile the library MC33
 */
 
@@ -19,7 +20,7 @@
 
 #ifndef GRD_orthogonal
 extern void (*mult_Abf)(double (*)[3], float *, float *, int);
-extern int DefaultColorMC;
 #endif
+extern int DefaultColorMC;
 
 #include "marching_cubes_33.c"
