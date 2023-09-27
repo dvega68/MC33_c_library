@@ -5,6 +5,7 @@
 	February 2020
 	July 2020
 	July 2021
+	September 2023
 	This is an open source code. The distribution and use rights are under the terms of the MIT license (https://opensource.org/licenses/MIT)
 */
 
@@ -489,8 +490,10 @@ private:
 
 			// set the scale and center of the surfaces:
 			float r[3] = {0.5f*G->L[0], 0.5f*G->L[1], 0.5f*G->L[2]};
+#ifndef GRD_orthogonal
 			if (G->nonortho)
 				mult_Abf(G->_A, r, r, 0);
+#endif
 			wgl->set_center(r[0] + G->r0[0], r[1] + G->r0[1], r[2] + G->r0[2]);
 			int i = G->L[1] > G->L[0];
 			if (G->L[2] > G->L[i]) i = 2;
