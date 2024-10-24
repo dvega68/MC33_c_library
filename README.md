@@ -135,7 +135,7 @@ Or create a `_GRD` from your own grid data, for example:
 			for (i = 0; i < nx; ++i)
 			{
 				float x = r0[0] + i*d[0];
-				data[++l] = cos(x) + cos(y) + cos(z);
+				data[l++] = cos(x) + cos(y) + cos(z);
 			}
 		}
 	}
