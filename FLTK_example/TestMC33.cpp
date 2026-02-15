@@ -6,6 +6,7 @@
 	July 2020
 	July 2021
 	September 2023
+	February 2026
 	This is an open source code. The distribution and use rights are under the terms of the MIT license (https://opensource.org/licenses/MIT)
 */
 
@@ -15,6 +16,7 @@
 #include <fstream>
 #include <ctime>
 #include <cstring>
+#include <cmath>
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #include <io.h>
@@ -29,6 +31,7 @@
 #include <FL/Fl_Box.H>
 #include <FL/Fl_Button.H>
 #include <FL/Fl_Value_Input.H>
+#include <FL/Fl_Int_Input.H>
 #include <FL/Fl_Check_Button.H>
 #include <FL/Fl_Radio_Round_Button.H>
 #include <FL/Fl_File_Chooser.H>
@@ -38,11 +41,11 @@
 #include <FL/fl_ask.H>
 
 /*
-#include <marching_cubes_33.h> // put -lMC33 in the link libraries
+#include "../include/marching_cubes_33.h" // put "../lib/libMC33.a" in the link libraries
 /*/
 #include "../source/marching_cubes_33.c"
-//*/
 #include "../source/MC33_util_grd.c"
+//*/
 
 void drawsurface(surface *S) {
 	glEnableClientState(GL_VERTEX_ARRAY);
@@ -174,6 +177,7 @@ class gl_window : public Fl_Gl_Window {
 public:
 	gl_window(int X,int Y,int W,int H, const char*L = 0) : Fl_Gl_Window(X, Y, W, H, L) {
 		end();
+		surf = 0;
 		Tx = Ty = bgr = bgg = bgb = x_c = y_c = z_c = 0.0f;
 		scale_factor = scale_size = 1.0f;
 		set_light_pos(0, 1.5f, -0.5f, 2.0f);
@@ -335,7 +339,8 @@ long long filesize(const char *filename) {
 class MyWindowClass : public Fl_Double_Window {
 	gl_window *wgl;					// opengl window
 	Fl_Box *numvert_box, *time_box, *info_box;
-	Fl_Value_Input *isoval_input, *res_w[3], *ratiox, *ratioy, *ratioz;
+	Fl_Value_Input *isoval_input, *ratiox, *ratioy, *ratioz;
+	Fl_Int_Input *res_w[3];
 	Fl_Double_Window *reswindow, *ratiowindow;
 	int accept, defaultcolor;
 	Fl_Check_Button *bigendian;
@@ -358,7 +363,7 @@ private:
 			info.str("");
 			info << "Time: " << vs[vs_i]->user.i[0] << " ms";
 			time_box->copy_label(info.str().c_str());
-			isoval_input->value(vs[vs_i]->user.f[3]);
+			isoval_input->value(vs[vs_i]->iso);
 			wgl->SetSurface(vs[vs_i]);
 		}
 		numvert_box->redraw();
@@ -366,9 +371,9 @@ private:
 	}
 
 	void CalcIso_cb2() {
-		double iso = isoval_input->value();
+		float iso = isoval_input->value();
 		for (size_t i = 0; i != vs.size(); i++)
-			if (vs[i]->user.f[3] == iso) {
+			if (vs[i]->iso == iso) {
 				vs_i = i;
 				fill_surface_info();
 				return;
@@ -446,7 +451,7 @@ private:
 						Fl::wait();
 					if (accept) {
 						for(int i = 0; i != 3; ++i)
-							n[i] = (int)res_w[i]->value();
+							n[i] = atoi(res_w[i]->value());
 						long long div = n[0]*n[1]*n[2];
 						unsigned int nb = (div? fsize/div: 1);
 						if (div*nb == fsize)
@@ -554,18 +559,47 @@ private:
 	void save_cb2() {
 		if (vs.empty())
 			return;
-		char *s = fl_file_chooser("Save surface file", "Surface files(*.{txt,sup})", "");
+		char *s = fl_file_chooser("Save surface file", "Surface files(*.{txt,sup})\tPolygon File Format(*.ply)\tModel/obj(*.obj)", "");
 		if (!s)
 			return;
+		char *c = strrchr(s, '.');
+		int t = -1;
+		if (c) {
+			if (!strcmp(c, ".sup"))
+				t = 3;
+			else if (!strcmp(c, ".txt"))
+				t = 2;
+			else if (!strcmp(c, ".ply"))
+				t = 1;
+			else if (!strcmp(c, ".obj"))
+				t = 0;
+		}
+		if (t < 0) {
+			char *fn = s;
+			int n = strlen(s);
+			s = new (nothrow) char[n + 5];
+			if (!s)
+				return;
+			strcpy(s, fn);
+			strcpy(s + n, ".obj");
+		}
 		if (ask_replace_file(s)) {
-			char *c = strrchr(s, '.');
-			if (c) {
-				if (strcmp(c, ".sup"))
-					write_txt_s(s, vs[vs_i]);
-				else
-					write_bin_s(s, vs[vs_i]);
+			switch (t) {
+				case 3:
+					write_bin_s(vs[vs_i], s);
+					break;
+				case 2:
+					write_txt_s(vs[vs_i], s);
+					break;
+				case 1:
+					write_ply_s(vs[vs_i], s, 0, 0);
+					break;
+				default:
+					write_obj_s(vs[vs_i], s);
 			}
 		}
+		if (t < 0)
+			delete[] s;
 	}
 
 	static void save_cb(Fl_Widget*, void *userdata) {
@@ -659,9 +693,9 @@ public:
 		reswindow = new Fl_Double_Window(180, 90, "Resolution Nx, Ny, Nz");
 			o = new Fl_Button(100, 60, 65, 20, "Accept");
 			o->callback(accept_cb, (void*)this);
-			res_w[0] = new Fl_Value_Input(11, 10, 46, 20);
-			res_w[1] = new Fl_Value_Input(67, 10, 46, 20, ",");
-			res_w[2] = new Fl_Value_Input(123, 10, 46, 20, ",");
+			res_w[0] = new Fl_Int_Input(11, 10, 46, 20);
+			res_w[1] = new Fl_Int_Input(67, 10, 46, 20, ",");
+			res_w[2] = new Fl_Int_Input(123, 10, 46, 20, ",");
 			Fl_Radio_Round_Button *rb = new Fl_Radio_Round_Button(10, 35, 60, 20, "integer");
 			rb->callback(filedatatype_cb, (void*)this);
 			rb->value(1);

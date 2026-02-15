@@ -3,7 +3,7 @@ CPP      = g++
 SOURCE   = TestMC33.cpp
 OBJ      = $(SOURCE:.cpp=.o)
 LFLTK    = -lfltk_gl -lfltk
-LX11R    = -lXfixes -lXext -lpthread -lX11
+LX11R    = -lXext -lX11
 LIBS     = -lGLU -lGL -ldl $(LFLTK) $(LX11R) -lm -s
 CPPINCS  =
 BIN      = TestMC33
