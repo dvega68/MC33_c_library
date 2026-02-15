@@ -4,14 +4,12 @@
 
 #### INFO:
 
-MC33 library version 5.3
+MC33 library version 5.4
 
 This library is a new version of the MC33 library of the paper:  
 Vega, D., Abache, J., Coll, D., [A Fast and Memory-Saving Marching Cubes 33 implementation with the correct interior test](http://jcgt.org/published/0008/03/01), *Journal of Computer Graphics Techniques (JCGT)*, vol. 8, no. 3, 1-18, 2019.
 
 The MC33 library is an open source software. The distribution and use rights are under the terms of the [MIT license](https://opensource.org/licenses/MIT), described in the file "LICENSE.txt".
-
-![GLUT example](https://repository-images.githubusercontent.com/469927258/b20e020b-393e-40d2-b02d-0926ff7f0d39 "Screenshot of the GLUT example")
 
 ---
 
@@ -36,30 +34,37 @@ GLUT_example/makefiledebian.mak (Debian GCC makefile)
 
 #### CUSTOMIZING:
 
-There are 3 options that can be modified before compiling the library. You can do it by editing the marching_cubes_33.h or libMC33.c file:
+There are some options that can be modified before compiling the library. You can do it by editing the marching_cubes_33.h file:
 
-1. To change the data type of the grid (the default value is float) define size_type_GRD and/or integer_GRD (marching_cubes_33.h). For example:
+1. To change the data type of the grid (the default value is float) define GRD_TYPE_SIZE and/or GRD_INTEGER (marching_cubes_33.h). For example:
 	```c
-	#define size_type_GRD 8 // the data type is double
+	#define GRD_TYPE_SIZE 8 // the data type is double
 
-	#define integer_GRD
-	#define size_type_GRD 4 // the data type is unsigned int
+	#define GRD_TYPE_SIZE 4 // the data type is float
 
-	#define integer_GRD
-	#define size_type_GRD 2 // the data type is unsigned short int
+	#define GRD_INTEGER
+	#define GRD_TYPE_SIZE 4 // the data type is unsigned int
 
-	#define integer_GRD
-	#define size_type_GRD 1 // the data type is unsigned char
+	#define GRD_INTEGER
+	#define GRD_TYPE_SIZE 2 // the data type is unsigned short int
+
+	#define GRD_INTEGER
+	#define GRD_TYPE_SIZE 1 // the data type is unsigned char
 	```
 
-2. If you do not use inclined grids, you can define GRD_orthogonal (marching_cubes_33.h):
+2. If you do not use inclined grids, you can define GRD_ORTHOGONAL:
 	```c
-	#define GRD_orthogonal
+	#define GRD_ORTHOGONAL
 	```
 
-3. If you need to exchange the front and back surfaces, define MC_Normal_neg (libMC33.c):
+3. If you need to exchange the front and back surfaces, define MC33_NORMAL_NEG:
 	```c
-	#define MC_Normal_neg
+	#define MC33_NORMAL_NEG
+	```
+
+4. The default color of isosurfaces, can be changed:
+	```c
+	#define DEFAULT_SURFACE_COLOR 0xFF18A0C8// RGBA 0xAABBGGRR: red 200, green 160, blue 24
 	```
 
 ---
@@ -79,16 +84,16 @@ There are 3 options that can be modified before compiling the library. You can d
 	and put in the linker options of your program makefile: -lMC33
 
 
-2. Instead of compiling the library, you can directly include the library code files in your code. Put at the beginning of your C/C++ code:
+2. Instead of compiling the library, you can directly include the MC33 code files in your code. In only one file in your project, before use the MC33 code, put (do not include marching_cubes_33.h):
 	```c
 	#include "..Path ../source/marching_cubes_33.c"
+	#include "..Path ../source/MC33_util_grd.c"
 	```
-
-To use the functions that read some grid files, also include the MC33_util_grd.c file (marching_cubes_33.h file has to be included before).
+	You must define mc33_no_lib before including marching_cubes_33.h in the other files in your project that also use MC33 code (this avoids the declaration `extern "C"` in marching_cubes_33.h).
 
 ---
 
-#### COMPILING THE EXAMPLE:
+#### COMPILING THE EXAMPLES:
 
 In Debian terminal window, go to the FLTK_example or GLUT_example folder and write:
 ```sh
@@ -102,10 +107,10 @@ make -f makefileMinGW-w64.mak
 
 For the FLTK example in any operating system you also can use the fltk-config script:
 ```sh
-path/fltk-1.X.Y/fltk-config --compile TestMC33.cpp
+path/fltk-1.X.Y/fltk-config --use-gl --compile TestMC33.cpp
 ```
 
-The makefiles use the -Ofast optimization option and the fltk-config script uses a lower optimization level.
+The makefiles use the `-Ofast` optimization option and the fltk-config script uses a lower optimization level.
 
 In the GLUT example, the file containing the grid must be passed to the program on the command line (you can also drag and drop the grid file into the executable file in Windows File Explorer). No other grid files can be read from the running program. This example uses the `generate_grid_from_fn` function (found in the MC33_util_grd.c file) to generate grids from math functions if the grid file is not specified.
 
@@ -113,7 +118,7 @@ In the GLUT example, the file containing the grid must be passed to the program 
 
 #### USAGE:
 
-You can declare a `_GRD` pointer and then use one of the functions to load files that contain grids (read_grd, read_scanfiles, read_raw_file or read_dat_file, found in the MC33_util_grd.c file):
+You can declare a `_GRD` pointer and then use one of the functions to load files that contain grids (`read_grd`, `read_scanfiles`, `read_raw_file` or `read_dat_file`, found in the MC33_util_grd.c file):
 ```c
 	_GRD* G;
 	G = read_dat_file("filename.dat");
@@ -135,7 +140,7 @@ Or create a `_GRD` from your own grid data, for example:
 			for (i = 0; i < nx; ++i)
 			{
 				float x = r0[0] + i*d[0];
-				data[l++] = cos(x) + cos(y) + cos(z);
+				data[++l] = cos(x) + cos(y) + cos(z);
 			}
 		}
 	}
@@ -146,7 +151,7 @@ Or create a `_GRD` from your own grid data, for example:
 
 see the file marching_cubes_33.h for the description of the `_GRD` structure.
 
-Now, you need create a MC33 structure using the create_MC33 function:
+Now, you need create a `MC33` structure using the `create_MC33` function:
 ```c
 	MC33 *M;
 	M = create_MC33(G);
@@ -163,19 +168,20 @@ To free the memory occupied by S:
 	free_surface_memory(S);
 ```
 
-To free the memory occupied by M:
+To free the memory occupied by M and G:
 ```c
 	free_MC33(M);
+	free_memory_grd(G);
 ```
 
 
-See marching_cubes_33.h and MC33_util_grd.c for the use of other functions.
+See marching_cubes_33.h for a description of other functions.
 
 ---
 
 #### OTHERS:
 
-A new function was added to the MC33_util_grd.c file. The `generate_grid_from_fn` function permits build a grid by using a scalar function `double fn(double x, double y, double z)`.
+The `generate_grid_from_fn` function permits build a grid by using a scalar function `double fn(double x, double y, double z)`.
 
 for example:
 ```c
@@ -239,11 +245,17 @@ or:
 
 To calculate the size (in bytes) of an isosurface, without calculating the isosurface, use:
 ```c
-	unsigned long long size = size_of_isosurface(M, iso, nV, nT);
+	unsigned long long size = size_of_isosurface(M, iso, &nV, &nT);
 ```
-where M is a pointer to the MC33 structure, iso is the isovalue (a "`float`"), nV and nT are pointers to the unsigned integers that will contain the number of vertices and triangles, respectively.
+where `M` is a pointer to the `MC33` structure, `iso` is the isovalue (a "`float`"), `nV` and `nT` are the unsigned integers that will contain the number of vertices and triangles, respectively.
 
 See [this link](https://stackoverflow.com/questions/65066235/estimating-size-of-marching-cubes-output-geometry)
+
+Two new funtions where added to save the surface: `write_obj_s` and `write_ply_s`, the first saves the surface data in a Wavefront .obj file, the other saves the data in a "Polygon File Format" (.ply) file.
+
+---
+
+The marching_cubes_33.h file contains a description of all the functions of this library.
 
 ---
 
