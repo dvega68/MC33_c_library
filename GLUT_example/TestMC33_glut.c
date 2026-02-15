@@ -3,6 +3,7 @@
 	Programmed by: David Vega - dvega@uc.edu.ve
 	December 2021
 	September 2023
+	February 2026
 	This is an open source code. The distribution and use rights are under the terms of the MIT license (https://opensource.org/licenses/MIT)
 */
 
@@ -29,7 +30,7 @@
 #endif
 
 /*
-#include <marching_cubes_33.h> // put -lMC33 in the link libraries
+#include "../include/marching_cubes_33.h" // put "../lib/libMC33.a" in the link libraries
 /*/
 #include "../source/marching_cubes_33.c"
 //*/
@@ -73,7 +74,7 @@ unsigned int vs_i, vs_n = 0, vs_max = 0;
 _GRD *G;
 MC33 *MC;
 
-surface *surf;
+surface *surf = 0;
 float bgr, bgg, bgb;
 float lightPosition[2][4];
 float MGL[16];
@@ -85,7 +86,7 @@ float cX, cY, cZ;
 
 char surfSizeStr[80], timeStr[32];
 
-char isoString[256], auxInputString[512];
+char isoString[256], auxInputString[1024];
 int showMessage, inputIso, saveIso, showHelp, setSurfColor;
 float txtF, txtX, txtY;
 
@@ -221,7 +222,7 @@ void info_text() {
 	glDisable(GL_LIGHTING);
 	if (showMessage || saveIso) {
 		glColor4f(0.0f, 0.0f, 1.0f, 0.8f);
-		float halfw = (saveIso || setSurfColor? 48.0f: 32.0f)*txtF;
+		float halfw = (saveIso || setSurfColor? 55.0f: 32.0f)*txtF;
 		glEnable(GL_BLEND);
 		glRectf(-halfw, -16.0f*txtF, halfw, 16.0f*txtF);
 		glDisable(GL_BLEND);
@@ -229,7 +230,7 @@ void info_text() {
 		displaytext("Press Esc to close this box", txtF - halfw, -15.0f*txtF);
 		if (saveIso) {
 			if (showMessage) {
-				displaytext("Type the surface filename (*.txt or *.sup):", -43*txtF, (20.0f/8)*txtF);
+				displaytext("Type the filename (*.obj, *.ply, *.txt or *.sup):", -49*txtF, (20.0f/8)*txtF);
 				glColor3f(1.0f, 1.0f, 1.0f);
 				displaytext(auxInputString, -40*txtF, (-20.0f/8)*txtF);
 				glutBitmapCharacter(GLUT_BITMAP_8_BY_13, '_');
@@ -246,23 +247,23 @@ void info_text() {
 		if (showHelp) {
 			glColor4f(0.20f, 0.20f, 0.20f, 0.6f);
 			glEnable(GL_BLEND);
-			glRectf(-45.0f*txtF, -27.5f*txtF, 45.0f*txtF, 28.5f*txtF);
+			glRectf(-46.0f*txtF, -27.5f*txtF, 46.0f*txtF, 28.5f*txtF);
 			glDisable(GL_BLEND);
 			glColor3f(1.0f, 1.0f, 1.0f);
-			float f = -41*txtF;
-			displaytext("KEYBOARD MENU:", -30*txtF, (90.0f/4)*txtF);
-			displaytext("I            : Enter an isovalue", f, (70.0f/4)*txtF);
-			displaytext("H            : Show/hide this information", f, (55.0f/4)*txtF);
-			displaytext("S            : Save the current surface", f, (40.0f/4)*txtF);
-			displaytext("C            : Sets the surface color", f, (25.0f/4)*txtF);
-			displaytext("R            : Resets the view", f, (10.0f/4)*txtF);
-			displaytext("F            : Swap back and front faces", f, -(5.0f/4)*txtF);
-			displaytext("L            : back face lighting on/off", f, -(20.0f/4)*txtF);
-			displaytext("Escape key   : Hide help and messages", f, (-35.0f/4)*txtF);
-			displaytext("Space bar    : Show the next surface", f, (-50.0f/4)*txtF);
-			displaytext("Alt + Space  : Show the previous surface", f, (-65.0f/4)*txtF);
-			displaytext("Alt + Delete : Delete the current surface", f, (-80.0f/4)*txtF);
-			displaytext("Alt + Q      : Exits the program", f, (-95.0f/4)*txtF);
+			float f = -43*txtF;
+			displaytext("KEYBOARD MENU:", -32*txtF, (90.0f/4)*txtF);
+			displaytext("I              : Enter an isovalue", f, (70.0f/4)*txtF);
+			displaytext("H              : Show/hide this information", f, (55.0f/4)*txtF);
+			displaytext("S              : Save the current surface", f, (40.0f/4)*txtF);
+			displaytext("C              : Sets the surface color", f, (25.0f/4)*txtF);
+			displaytext("R              : Resets the view", f, (10.0f/4)*txtF);
+			displaytext("F              : Swap back and front faces", f, -(5.0f/4)*txtF);
+			displaytext("L              : back face lighting on/off", f, -(20.0f/4)*txtF);
+			displaytext("Escape key     : Hide help and messages", f, (-35.0f/4)*txtF);
+			displaytext("Space bar      : Show the next surface", f, (-50.0f/4)*txtF);
+			displaytext("Shift + Space  : Show the previous surface", f, (-65.0f/4)*txtF);
+			displaytext("Shift + Delete : Delete the current surface", f, (-80.0f/4)*txtF);
+			displaytext("Alt + Q        : Exits the program", f, (-95.0f/4)*txtF);
 		} else {
 			glColor3f(0.75f, 0.75f, 0.75f);
 			displaytext("Press h for help", -32*txtF - txtX , txtY);
@@ -385,7 +386,7 @@ void fill_surface_info() {
 		surf = vs[vs_i];
 		sprintf(surfSizeStr, "Surface: %d|%d  Vertices: %d  Triangles: %d", vs_i + 1, vs_n, surf->nV, surf->nT);
 		sprintf(timeStr, "Time: %d ms", surf->user.i[0]);
-		sprintf(isoString, "%.6f", surf->user.df[1]);
+		sprintf(isoString, "%.6f", surf->iso);
 		n = strlen(isoString);
 		while (--n > 0) {
 			if (isoString[n] == '0')
@@ -416,10 +417,10 @@ void delete_iso() {
 	fill_surface_info();
 }
 
-void calc_iso(double iso) {
+void calc_iso(float iso) {
 	unsigned int i;
 	for (i = 0; i != vs_n; i++)
-		if (vs[i]->user.df[1] == iso) {
+		if (vs[i]->iso == iso) {
 			vs_i = i;
 			fill_surface_info();
 			return;
@@ -442,7 +443,6 @@ void calc_iso(double iso) {
 		if (S) {
 			if (S->nV > 0) {
 				S->user.i[0] = t*1000/CLOCKS_PER_SEC;
-				S->user.df[1] = iso; // save the isovalue as double for better comparison.
 				vs_i = vs_n++;
 				vs[vs_i] = S;
 				fill_surface_info();
@@ -470,16 +470,40 @@ void select_iso(int next) {
 	fill_surface_info();
 }
 
-void save_iso2() {
-	const char *c = strrchr(auxInputString, '.');
-	if (c) {
-		if (strcmp(c,".sup"))
-			c = 0;
+void save_iso2(int t) {
+	switch (t) {
+		case 0:
+			write_obj_s(surf, auxInputString);
+			break;
+		case 1:
+			write_ply_s(surf, auxInputString, 0, 0);
+			break;
+		case 2:
+			write_txt_s(surf, auxInputString);
+			break;
+		case 3:
+			write_bin_s(surf, auxInputString);
 	}
-	if (c)
-		write_bin_s(auxInputString, surf);
-	else
-		write_txt_s(auxInputString, surf);
+}
+
+int sel_surface_type() {
+	char *c = strrchr(auxInputString, '.');
+	int t = -1;
+	if (c) {
+		if (!strcmp(c, ".sup"))
+			t = 3;
+		else if (!strcmp(c, ".txt"))
+			t = 2;
+		else if (!strcmp(c, ".ply"))
+			t = 1;
+		else if (!strcmp(c, ".obj"))
+			t = 0;
+	}
+	if (t < 0) {
+		t = 0;
+		strcpy(auxInputString + strlen(auxInputString), ".obj");
+	}
+	return t;
 }
 
 // called when a mouse button is pressed
@@ -520,12 +544,14 @@ void keyb_string(unsigned char c, int x, int y) {
 			inputIso = 0;
 		} else if (saveIso) {
 			hide_message();
-			if (auxInputString[0] == (char)0)
+			if (auxInputString[0] > ' ') {
+				n = sel_surface_type();
+				if (!file_exist(auxInputString)) {
+					saveIso = 0;
+					save_iso2(n);
+				}
+			} else
 				saveIso = 0;
-			else if (!file_exist(auxInputString)) {
-				saveIso = 0;
-				save_iso2();
-			}
 		} else if (setSurfColor) {
 			setSurfColor = 0;
 			hide_message();
@@ -576,7 +602,7 @@ void save_iso() {
 void keyboard(unsigned char key, int x, int y) {
 	if (saveIso) {
 		if (key == 'Y' || key == 'y')
-			save_iso2();
+			save_iso2(sel_surface_type());
 		saveIso = 0;
 	} else
 		switch(key) {
@@ -585,11 +611,11 @@ void keyboard(unsigned char key, int x, int y) {
 			hide_message();
 			break;
 		case ' ':
-			select_iso(GLUT_ACTIVE_ALT != glutGetModifiers());
+			select_iso(!(GLUT_ACTIVE_SHIFT&glutGetModifiers()));
 			break;
 		case '\b': // Backspace key
 		case 127: // Delete key
-			if (GLUT_ACTIVE_ALT == glutGetModifiers()) // if the Control key is pressed
+			if (GLUT_ACTIVE_SHIFT&glutGetModifiers()) // if the Shift key is pressed
 				delete_iso();
 			break;
 		case 'C':
@@ -634,7 +660,7 @@ void keyboard(unsigned char key, int x, int y) {
 			break;
 		case 'Q':
 		case 'q':
-			if (GLUT_ACTIVE_ALT == glutGetModifiers()) // if the Control key is pressed
+			if (GLUT_ACTIVE_ALT&glutGetModifiers()) // if the Alt key is pressed
 				exit(0);
 			break;
 		case 'R':
