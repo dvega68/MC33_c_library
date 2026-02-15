@@ -11,6 +11,7 @@
 	August 2020.
 	August 2021.
 	December 2021.
+	February 2026.
 */
 
 #ifndef marching_cubes_33_h
@@ -29,34 +30,70 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#ifndef GRD_orthogonal
+// Silence type conversion warnings in Visual C
+#ifdef _MSC_VER
+#pragma warning( push )
+// disable warning when a double value is assigned to float variable
+#pragma warning( disable : 4244 )
+// disable warning when a size_t value is assigned to int variable
+#pragma warning( disable : 4267 )
+#endif
+
+#ifndef GRD_ORTHOGONAL
+/* c = Ab, A is a 3x3 upper triangular matrix. If t != 0, A is transposed. */
+void _multTSA_bf(const double (*A)[3], float *b, float *c, int t) {
+	if(t) {
+		c[2] = A[0][2]*b[0] + A[1][2]*b[1] + A[2][2]*b[2];
+		c[1] = A[0][1]*b[0] + A[1][1]*b[1];
+		c[0] = A[0][0]*b[0];
+	} else {
+		c[0] = A[0][0]*b[0] + A[0][1]*b[1] + A[0][2]*b[2];
+		c[1] = A[1][1]*b[1] + A[1][2]*b[2];
+		c[2] = A[2][2]*b[2];
+	}
+}
+/* Performs the multiplication of the matrix A and the vector b: c = Ab. If t != 0, A is transposed. */
+void _multA_bf(const double (*A)[3], float* b, float* c, int t) {
+	double u,v;
+	if(t) {
+		u = A[0][0]*b[0] + A[1][0]*b[1] + A[2][0]*b[2];
+		v = A[0][1]*b[0] + A[1][1]*b[1] + A[2][1]*b[2];
+		c[2] = A[0][2]*b[0] + A[1][2]*b[1] + A[2][2]*b[2];
+	} else {
+		u = A[0][0]*b[0] + A[0][1]*b[1] + A[0][2]*b[2];
+		v = A[1][0]*b[0] + A[1][1]*b[1] + A[1][2]*b[2];
+		c[2] = A[2][0]*b[0] + A[2][1]*b[1] + A[2][2]*b[2];
+	}
+	c[0] = u;
+	c[1] = v;
+}
+
+void (*mult_Abf)(const double (*)[3], float *, float *, int) = _multA_bf;
+
 void setIdentMat3x3d(double (*A)[3]) {
 	for (double *d = A[0] + 8; --d != A[0];)
 		d[0] = 0.0;
-	for (int i = 0; i != 3; ++i)
+	for (int i = 0; i != 3; i++)
 		A[i][i] = 1.0;
 }
-#endif
+#endif /* GRD_ORTHOGONAL */
 
-#ifndef LAGRANGE3D4GRD_H
-//******************************************************************
+/******************************************************************/
 void free_memory_grd(_GRD *Z) {
 	unsigned int k, j;
 	if (Z) {
 		if (Z->F) {
 			if (Z->internal_data)
-				for (k = 0; k <= Z->N[2]; ++k) {
+				for (k = 0; k <= Z->N[2]; k++) {
 					if (Z->F[k]) {
-						for (j = 0; j <= Z->N[1]; ++j)
+						for (j = 0; j <= Z->N[1]; j++)
 							free(Z->F[k][j]);
-					} else {
-						k = Z->N[2];
+					} else
 						break;
-					}
 					free(Z->F[k]);
 				}
 			else
-				for (k = 0; k <= Z->N[2]; ++k)
+				for (k = 0; k <= Z->N[2]; k++)
 					free(Z->F[k]);
 			free(Z->F);
 		}
@@ -69,11 +106,11 @@ int alloc_F(_GRD* Z) {
 	Z->F = (GRD_data_type***)malloc((Z->N[2] + 1)*sizeof(void*));
 	if (!Z->F)
 		return -1;
-	for (k = 0; k <= Z->N[2]; ++k) {
+	for (k = 0; k <= Z->N[2]; k++) {
 		Z->F[k] = (GRD_data_type**)malloc((Z->N[1] + 1)*sizeof(void*));
 		if (!Z->F[k])
 			return -1;
-		for (j = 0; j <= Z->N[1]; ++j) {
+		for (j = 0; j <= Z->N[1]; j++) {
 			Z->F[k][j] = (GRD_data_type*)malloc((Z->N[0] + 1)*sizeof(GRD_data_type));
 			if (!Z->F[k][j]) {
 				while (j)
@@ -89,8 +126,7 @@ int alloc_F(_GRD* Z) {
 }
 
 
-//******************************************************************
-/*
+/******************************************************************
 read_grd read a filename file (the file must be a output *.grd file from the
 DMol program), it returns a pointer to struct _GRD that contains all the grid
 data.
@@ -107,7 +143,7 @@ _GRD* read_grd(const char *filename) {
 	Z = (_GRD*)malloc(sizeof(_GRD));
 	if (!Z) return 0;
 
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	Z->nonortho = 0;
 #endif
 	Z->periodic = 0;
@@ -124,14 +160,14 @@ _GRD* read_grd(const char *filename) {
 	sscanf(line,"%d %d %*d %d %*d %d %*d",&grd_ordenij,&grd_xi[0],&grd_xi[1],&grd_xi[2]);
 	if (Z->N[0] < 2 || Z->N[1] < 2 || Z->N[2] < 2) return 0;
 	if (grd_ordenij != 1 && grd_ordenij != 3) return 0;
-	for (i = 0; i != 3; ++i) {
+	for (i = 0; i != 3; i++) {
 		Z->d[i] = Z->L[i]/Z->N[i];
 		Z->r0[i] = grd_xi[i]*Z->d[i];
 	}
 
 	Z->periodic = (grd_xi[0] == 0)|((grd_xi[1] == 0)<<1)|((grd_xi[2] == 0)<<2);
 
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	memcpy(Z->Ang, Ang, sizeof Ang);
 	if (Ang[0] != 90 || Ang[1] != 90 || Ang[2] != 90) {
 		Z->nonortho = 1;
@@ -166,22 +202,21 @@ _GRD* read_grd(const char *filename) {
 		return 0;
 	}
 
-	for (k = 0; k <= Z->N[2]; ++k)
+	for (k = 0; k <= Z->N[2]; k++)
 		if (grd_ordenij == 1) {
-			for (j = 0; j <= Z->N[1]; ++j)
-				for (i = 0; i <= Z->N[0]; ++i)
+			for (j = 0; j <= Z->N[1]; j++)
+				for (i = 0; i <= Z->N[0]; i++)
 					fscanf(in,"%f",&Z->F[k][j][i]);
 		} else {
-			for (i = 0; i <= Z->N[0]; ++i)
-				for (j = 0; j <= Z->N[1]; ++j)
+			for (i = 0; i <= Z->N[0]; i++)
+				for (j = 0; j <= Z->N[1]; j++)
 					fscanf(in,"%f",&Z->F[k][j][i]);
 		}
 	fclose(in);
 	return Z;
 }
 
-/*
-internal binary format
+/* Internal binary format
 */
 _GRD* read_grd_binary(const char* filename) {
 	FILE* in;
@@ -207,7 +242,7 @@ _GRD* read_grd_binary(const char* filename) {
 	fread(Z->L,sizeof Z->L,1,in);
 	fread(Z->r0,sizeof Z->r0,1,in);
 	fread(Z->d,sizeof Z->d,1,in);
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	fread(&Z->nonortho,sizeof(int),1,in);
 	if (Z->nonortho) {
 		fread(Z->Ang,3*sizeof(float),1,in);
@@ -223,7 +258,6 @@ _GRD* read_grd_binary(const char* filename) {
 	if (i)
 		fseek(in, 3*sizeof(float) + 18*sizeof(double), SEEK_CUR);
 #endif
-	//Z->periodic = 0;
 	if (Z->r0[0] == 0 && Z->r0[1] == 0 && Z->r0[2] == 0)
 		Z->periodic = 1;
 
@@ -232,15 +266,14 @@ _GRD* read_grd_binary(const char* filename) {
 		return 0;
 	}
 
-	for (k = 0; k <= Z->N[2]; ++k)
-		for (j = 0; j <= Z->N[1]; ++j)
+	for (k = 0; k <= Z->N[2]; k++)
+		for (j = 0; j <= Z->N[1]; j++)
 			fread(Z->F[k][j],(Z->N[0] + 1)*sizeof(GRD_data_type),1,in);
 	fclose(in);
 	return Z;
 }
-#endif
-//******************************************************************
-/*
+
+/******************************************************************
 Reads a set of files that contain a slab of res*res scan data points, the data
 points are read as unsigned short int (if order is different from 0, the bytes
 of the unsigned short are exchanged). The filename must end with a number, and
@@ -259,13 +292,13 @@ _GRD* read_scanfiles(const char *filename, unsigned int res, int order) {
 	Z = (_GRD*)malloc(sizeof(_GRD));
 	if (!Z) return 0;
 
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	Z->nonortho = 0;
 #endif
 	Z->periodic = 0;
 	Z->internal_data = 1;
 	memset(Z->r0,0,sizeof Z->r0);
-	for (i = 0; i != 2; ++i) {
+	for (i = 0; i != 2; i++) {
 		Z->d[i] = 1;
 		Z->L[i] = Z->N[i] = res - 1;
 	}
@@ -294,20 +327,20 @@ _GRD* read_scanfiles(const char *filename, unsigned int res, int order) {
 		Z->F[k] = (GRD_data_type**)malloc(res*sizeof(void*));
 		if (!Z->F[k])
 			break;
-		for (j = 0; j != res; ++j)
+		for (j = 0; j != res; j++)
 			Z->F[k][j] = (GRD_data_type*)malloc(res*sizeof(GRD_data_type));
 		if (!Z->F[k][Z->N[1]])
 			break;
 
 		if (order)
-			for (j = 0; j != res; ++j)
-				for (i = 0; i != res; ++i) {
+			for (j = 0; j != res; j++)
+				for (i = 0; i != res; i++) {
 					fread(&n,sizeof(short int),1,in);
 					Z->F[k][j][i] = (unsigned short int)((n>>8)|(n<<8));
 				}
 		else
-			for (j = 0; j != res; ++j)
-				for (i = 0; i != res; ++i) {
+			for (j = 0; j != res; j++)
+				for (i = 0; i != res; i++) {
 					fread(&n,sizeof(short int),1,in);
 					Z->F[k][j][i] = n;
 				}
@@ -316,20 +349,19 @@ _GRD* read_scanfiles(const char *filename, unsigned int res, int order) {
 	free(nm);
 	Z->L[2] = Z->N[2] = k;
 	j = k>>1;
-	for (i = 0; i != j; ++i) {
+	for (i = 0; i != j; i++) {
 		p = Z->F[i];
 		Z->F[i] = Z->F[k - i];
 		Z->F[k - i] = p;
 	}
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	setIdentMat3x3d(Z->_A);
 	setIdentMat3x3d(Z->A_);
 #endif
 	return Z;
 }
 
-//******************************************************************
-/*
+/******************************************************************
 Reads a file that contains only the data points as integers of 8, 16 or 32 bits.
 byte is the number of bytes of each data point (1 to 4). If the data is big endian,
 byte must be negative. The vector N[3] contains the number of points in each
@@ -350,13 +382,13 @@ _GRD* read_raw_file(const char *filename, unsigned int *N, int byte, int isfloat
 	if (!Z)
 		return 0;
 
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	Z->nonortho = 0;
 #endif
 	Z->periodic = 0;
 	Z->internal_data = 1;
 	memset(Z->r0,0,sizeof Z->r0);
-	for (i = 0; i != 3; ++i)
+	for (i = 0; i != 3; i++)
 		Z->d[i] = 1;
 	in = fopen(filename,"rb");
 	if (!in)
@@ -370,33 +402,33 @@ _GRD* read_raw_file(const char *filename, unsigned int *N, int byte, int isfloat
 		return 0;
 	}
 
-#if defined(integer_GRD)
-	if (!isfloat && size_type_GRD == byte)
+#if defined(INTEGER_GRD)
+	if (!isfloat && GRD_TYPE_SIZE == byte)
 #else
-	if (isfloat && size_type_GRD == byte)
+	if (isfloat && GRD_TYPE_SIZE == byte)
 #endif
 	{
 		byte *= N[0];
-		for (k = 0; k != N[2]; ++k)
-			for (j = 0; j != N[1]; ++j)
+		for (k = 0; k != N[2]; k++)
+			for (j = 0; j != N[1]; j++)
 				fread(Z->F[k][j],byte,1,in);
 	} else if (isfloat) {
 		if (byte == 8) {
-#if defined(integer_GRD) || size_type_GRD == 4
+#if defined(INTEGER_GRD) || GRD_TYPE_SIZE == 4
 			double df;
-			for (k = 0; k != N[2]; ++k)
-				for (j = 0; j != N[1]; ++j)
-					for (i = 0; i != N[0]; ++i) {
+			for (k = 0; k != N[2]; k++)
+				for (j = 0; j != N[1]; j++)
+					for (i = 0; i != N[0]; i++) {
 						fread(&df,byte,1,in);
 						Z->F[k][j][i] = (GRD_data_type)df;
 					}
 #endif
 		} else {
-#if defined(integer_GRD) || size_type_GRD == 8
+#if defined(INTEGER_GRD) || GRD_TYPE_SIZE == 8
 			float f;
-			for (k = 0; k != N[2]; ++k)
-				for (j = 0; j != N[1]; ++j)
-					for (i = 0; i != N[0]; ++i) {
+			for (k = 0; k != N[2]; k++)
+				for (j = 0; j != N[1]; j++)
+					for (i = 0; i != N[0]; i++) {
 						fread(&f,byte,1,in);
 						Z->F[k][j][i] = (GRD_data_type)f;
 					}
@@ -404,10 +436,9 @@ _GRD* read_raw_file(const char *filename, unsigned int *N, int byte, int isfloat
 		}
 	} else if (byte < 0) {
 		byte = -byte;
-		for (k = 0; k != N[2]; ++k)
-		//for (k = N[2] - 1; k >= 0; --k)
-			for (j = 0; j != N[1]; ++j)
-				for (i = 0; i != N[0]; ++i) {
+		for (k = 0; k != N[2]; k++)
+			for (j = 0; j != N[1]; j++)
+				for (i = 0; i != N[0]; i++) {
 					fread(&ui,byte,1,in);
 					if (byte == 2)
 						Z->F[k][j][i] = (ui>>8)|((ui<<8)&0xff00);
@@ -415,24 +446,22 @@ _GRD* read_raw_file(const char *filename, unsigned int *N, int byte, int isfloat
 						Z->F[k][j][i] = (ui>>24)|((ui>>8)&0xff00)|((ui<<8)&0xff0000)|(ui<<24);
 				}
 	} else {
-		for (k = 0; k != N[2]; ++k)
-		//for (k = N[2] - 1; k >= 0; --k)
-			for (j = 0; j != N[1]; ++j)
-				for (i = 0; i != N[0]; ++i) {
+		for (k = 0; k != N[2]; k++)
+			for (j = 0; j != N[1]; j++)
+				for (i = 0; i != N[0]; i++) {
 					fread(&ui,byte,1,in);
 					Z->F[k][j][i] = ui;
 				}
 	}
 	fclose(in);
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	setIdentMat3x3d(Z->_A);
 	setIdentMat3x3d(Z->A_);
 #endif
 	return Z;
 }
 
-//******************************************************************
-/*
+/******************************************************************
 Reads a dat file:
 http://www.cg.tuwien.ac.at/research/vis/datasets/
 */
@@ -446,13 +475,13 @@ _GRD* read_dat_file(const char *filename) {
 	if (!Z)
 		return 0;
 
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	Z->nonortho = 0;
 #endif
 	Z->periodic = 0;
 	Z->internal_data = 1;
 	memset(Z->r0,0,sizeof Z->r0);
-	for (i = 0; i != 3; ++i)
+	for (i = 0; i != 3; i++)
 		Z->d[i] = 1;
 	in = fopen(filename,"rb");
 	if (!in)
@@ -470,21 +499,20 @@ _GRD* read_dat_file(const char *filename) {
 	}
 
 	while (nz--)
-		for (j = 0; j != ny; ++j)
-			for (i = 0; i != nx; ++i) {
+		for (j = 0; j != ny; j++)
+			for (i = 0; i != nx; i++) {
 				fread(&n,sizeof(short int),1,in);
 				Z->F[nz][j][i] = n;
 			}
 	fclose(in);
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	setIdentMat3x3d(Z->_A);
 	setIdentMat3x3d(Z->A_);
 #endif
 	return Z;
 }
 
-//******************************************************************
-/*
+/******************************************************************
 	set_data_pointer creates a _GRD struct from an external data array. data
 	must be stored with the nested inner loop running from i = 0 to Nx - 1
 	and the outer loop from k = 0 to Nz - 1. The data will not be erased by
@@ -506,7 +534,7 @@ _GRD* grid_from_data_pointer(unsigned int Nx, unsigned int Ny, unsigned int Nz, 
 	Z->N[0] = Nx - 1;
 	Z->N[1] = Ny - 1;
 	Z->N[2] = Nz - 1;
-	for (k = 0; k < Nz; ++k) {
+	for (k = 0; k < Nz; k++) {
 		Z->F[k] =(GRD_data_type**)malloc(Ny*sizeof(void*));
 		if (!Z->F[k]) {
 			while (k)
@@ -515,19 +543,19 @@ _GRD* grid_from_data_pointer(unsigned int Nx, unsigned int Ny, unsigned int Nz, 
 			free(Z);
 			return 0;
 		}
-		for (j = 0; j < Ny; ++j)
+		for (j = 0; j < Ny; j++)
 			Z->F[k][j] = data + j*Nx;
 		data += Ny*Nx;
 	}
-	for (i = 0; i != 3; ++i) {
+	for (i = 0; i != 3; i++) {
 		Z->L[i] = Z->N[i];
 		Z->d[i] = 1.0;
 		Z->r0[i] = 0.0;
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 		Z->Ang[i] = 90.0f;
 #endif
 	}
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	Z->nonortho = 0;
 	setIdentMat3x3d(Z->_A);
 	setIdentMat3x3d(Z->A_);
@@ -535,7 +563,8 @@ _GRD* grid_from_data_pointer(unsigned int Nx, unsigned int Ny, unsigned int Nz, 
 	return Z;
 }
 
-
+/******************************************************************
+*/
 _GRD* generate_grid_from_fn(double xi, double yi, double zi, double xf, double yf, double zf, double dx, double dy, double dz, double (*fn)(double x, double y, double z)) {
 	if (dx <= 0 || dy <= 0 || dz <= 0 || xi == xf || yi == yf || zi == zf)
 		return 0;
@@ -566,11 +595,11 @@ _GRD* generate_grid_from_fn(double xi, double yi, double zi, double xf, double y
 	if (fn) {
 		unsigned int i, j, k;
 		double x, y, z = zi;
-		for (k = 0; k <= Z->N[2]; ++k) {
+		for (k = 0; k <= Z->N[2]; k++) {
 			y = yi;
-			for (j = 0; j <= Z->N[1]; ++j) {
+			for (j = 0; j <= Z->N[1]; j++) {
 				x = xi;
-				for (i = 0; i <= Z->N[0]; ++i) {
+				for (i = 0; i <= Z->N[0]; i++) {
 					Z->F[k][j][i] = (GRD_data_type)fn(x,y,z);
 					x += dx;
 				}
@@ -579,13 +608,13 @@ _GRD* generate_grid_from_fn(double xi, double yi, double zi, double xf, double y
 			z += dz;
 		}
 	}
-	for (int i = 0; i != 3; ++i) {
+	for (int i = 0; i != 3; i++) {
 		Z->L[i] = Z->N[i]*Z->d[i];
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 		Z->Ang[i] = 90.0f;
 #endif
 	}
-#ifndef GRD_orthogonal
+#ifndef GRD_ORTHOGONAL
 	Z->nonortho = 0;
 	setIdentMat3x3d(Z->_A);
 	setIdentMat3x3d(Z->A_);
@@ -593,7 +622,11 @@ _GRD* generate_grid_from_fn(double xi, double yi, double zi, double xf, double y
 	return Z;
 }
 
+/******************************************************************/
 
-//******************************************************************
-#endif //MC33_util_grd_c
+#ifdef _MSC_VER
+#pragma warning( pop )
+#endif
+
+#endif /*MC33_util_grd_c*/
 
