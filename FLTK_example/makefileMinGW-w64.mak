@@ -6,7 +6,7 @@ LFLTK    = -lfltk_gl -lfltk
 LIBS     = -static $(LFLTK) -lWs2_32 -lole32 -lglu32 -lopengl32 -lgdiplus -luuid -lcomctl32 -lwinspool -lm
 CPPINCS  = 
 BIN      = TestMC33
-OPTIM    = -Ofast -m64 -Wall -Wextra -funroll-loops
+OPTIM    = -Ofast -m64 -Wall -Wextra -funroll-loops -ffunction-sections -fdata-sections
 CPPFLAGS = $(CPPINCS) -std=c++11 $(OPTIM)
 LDFLAGS  = -Wl,--gc-sections -mwindows $(LIBS) -m64 -s
 RM       = rm -f
@@ -19,7 +19,6 @@ RM       = rm -f
 all:	all-before $(BIN) all-after
 
 $(BIN): $(OBJ)
-	#$(SOURCE)
 	$(CPP) -o $(BIN) $(OBJ) $(LDFLAGS)
 
 clean: clean-custom
