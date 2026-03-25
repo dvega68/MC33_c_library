@@ -5,7 +5,7 @@ OBJ      = $(SOURCE:.c=.o)
 LIBS     = -lglut -lGLU -lGL -ldl -lm -s
 CINCS    =
 BIN      = TestMC33_glut
-OPTIM		 = -Ofast -Wall -Wextra -funroll-loops
+OPTIM    = -Ofast -Wall -Wextra -funroll-loops
 CFLAGS   = -Wno-unused-parameter $(CINCS) $(OPTIM)
 RM       = rm -f
 
@@ -17,7 +17,6 @@ RM       = rm -f
 all:	all-before $(BIN) all-after
 
 $(BIN): $(OBJ)
-	#$(SOURCE)
 	$(CC) -o $(BIN) $(OBJ) $(LIBS)
 
 clean: clean-custom
