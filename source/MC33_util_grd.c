@@ -3,15 +3,16 @@
 	Programed by: David Vega: dvega@uc.edu.ve
 	March 2012
 	updated by David Vega
-	November 2017.
-	February 2018.
-	April 2019.
-	July 2019.
-	February 2020.
-	August 2020.
-	August 2021.
-	December 2021.
-	February 2026.
+	November 2017
+	February 2018
+	April 2019
+	July 2019
+	February 2020
+	August 2020
+	August 2021
+	December 2021
+	February 2026
+	March 2026
 */
 
 #ifndef marching_cubes_33_h
@@ -21,14 +22,56 @@
 
 #ifndef MC33_util_grd_c
 #define MC33_util_grd_c
+
+#ifndef S_BIG_ENDIAN
+#if !defined(_MSC_VER) || defined(__clang__)
+#define S_BIG_ENDIAN (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#else
+#define S_BIG_ENDIAN 0
+#endif
+#endif // S_BIG_ENDIAN
+
 #include <math.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
+/******************************************************************/
+#if defined(__GNUC__) || defined(__clang__)
+#include <stdint.h>
+#define xbswap16 __builtin_bswap16
+#define xbswap32 __builtin_bswap32
+#define xbswap64 __builtin_bswap64
+#elif defined(_MSC_VER)
+#define xbswap16 _byteswap_ushort
+#define xbswap32 _byteswap_ulong
+#define xbswap64 _byteswap_uint64
+#else
+#include <stdint.h>
+inline uint16_t xbswap16(uint16_t x) {
+	return (x >> 8) | (x << 8);
+}
+
+inline uint32_t xbswap32(uint32_t x) {
+	return (x >> 24) | ((x & 0x00FF0000) >> 8) | ((x & 0x0000FF00) << 8) | (x << 24);
+}
+
+inline uint64_t xbswap64(uint64_t x) {
+	union {
+		uint64_t l;
+		uint32_t i[2];
+	} u;
+	u.l = x;
+	uint32_t t = xbswap32(u.i[0]);
+	u.i[0] = xbswap32(u.i[1]);
+	u.i[1] = t;
+	return u.l;
+}
 #endif
+/******************************************************************/
 
 // Silence type conversion warnings in Visual C
 #ifdef _MSC_VER
@@ -41,7 +84,7 @@
 
 #ifndef GRD_ORTHOGONAL
 /* c = Ab, A is a 3x3 upper triangular matrix. If t != 0, A is transposed. */
-void _multTSA_bf(const double (*A)[3], float *b, float *c, int t) {
+void _multTSA_bf(const double (*A)[3], MC33_real *b, MC33_real *c, int t) {
 	if(t) {
 		c[2] = A[0][2]*b[0] + A[1][2]*b[1] + A[2][2]*b[2];
 		c[1] = A[0][1]*b[0] + A[1][1]*b[1];
@@ -53,7 +96,7 @@ void _multTSA_bf(const double (*A)[3], float *b, float *c, int t) {
 	}
 }
 /* Performs the multiplication of the matrix A and the vector b: c = Ab. If t != 0, A is transposed. */
-void _multA_bf(const double (*A)[3], float* b, float* c, int t) {
+void _multA_bf(const double (*A)[3], MC33_real* b, MC33_real* c, int t) {
 	double u,v;
 	if(t) {
 		u = A[0][0]*b[0] + A[1][0]*b[1] + A[2][0]*b[2];
@@ -68,7 +111,7 @@ void _multA_bf(const double (*A)[3], float* b, float* c, int t) {
 	c[1] = v;
 }
 
-void (*mult_Abf)(const double (*)[3], float *, float *, int) = _multA_bf;
+void (*mult_Abf)(const double (*)[3], MC33_real *, MC33_real *, int) = _multA_bf;
 
 void setIdentMat3x3d(double (*A)[3]) {
 	for (double *d = A[0] + 8; --d != A[0];)
@@ -76,7 +119,7 @@ void setIdentMat3x3d(double (*A)[3]) {
 	for (int i = 0; i != 3; i++)
 		A[i][i] = 1.0;
 }
-#endif /* GRD_ORTHOGONAL */
+#endif // GRD_ORTHOGONAL
 
 /******************************************************************/
 void free_memory_grd(_GRD *Z) {
@@ -125,9 +168,13 @@ int alloc_F(_GRD* Z) {
 	return 0;
 }
 
-
-/******************************************************************
-read_grd read a filename file (the file must be a output *.grd file from the
+/******************************************************************/
+#if GRD_TYPE_SIZE == 8
+#define fmtG "%lf"
+#else
+#define fmtG "%f"
+#endif
+/*read_grd reads a filename file (the file must be a output *.grd file from the
 DMol program), it returns a pointer to struct _GRD that contains all the grid
 data.
 */
@@ -201,16 +248,15 @@ _GRD* read_grd(const char *filename) {
 		free_memory_grd(Z);
 		return 0;
 	}
-
 	for (k = 0; k <= Z->N[2]; k++)
 		if (grd_ordenij == 1) {
 			for (j = 0; j <= Z->N[1]; j++)
 				for (i = 0; i <= Z->N[0]; i++)
-					fscanf(in,"%f",&Z->F[k][j][i]);
+					fscanf(in,fmtG,&Z->F[k][j][i]);
 		} else {
 			for (i = 0; i <= Z->N[0]; i++)
 				for (j = 0; j <= Z->N[1]; j++)
-					fscanf(in,"%f",&Z->F[k][j][i]);
+					fscanf(in,fmtG,&Z->F[k][j][i]);
 		}
 	fclose(in);
 	return Z;
@@ -332,11 +378,15 @@ _GRD* read_scanfiles(const char *filename, unsigned int res, int order) {
 		if (!Z->F[k][Z->N[1]])
 			break;
 
+#if S_BIG_ENDIAN
+		if (!order)
+#else
 		if (order)
+#endif
 			for (j = 0; j != res; j++)
 				for (i = 0; i != res; i++) {
 					fread(&n,sizeof(short int),1,in);
-					Z->F[k][j][i] = (unsigned short int)((n>>8)|(n<<8));
+					Z->F[k][j][i] = xbswap16(n);
 				}
 		else
 			for (j = 0; j != res; j++)
@@ -371,13 +421,21 @@ _GRD* read_raw_file(const char *filename, unsigned int *N, int byte, int isfloat
 	unsigned int i, j, k;
 	_GRD *Z;
 	FILE *in;
-	unsigned int ui = 0;
+	union {
+		unsigned long long int ul;
+		double d;
+		unsigned int ui;
+		float f;
+		unsigned short int us;
+	} u = {0};
 	if (isfloat) {
-		if (byte != 4 && byte != 8)
+		if (abs(byte) != 4 && abs(byte) != 8)
 			return 0;
 	} else if (abs(byte) > 4 || abs(byte) == 3 || !byte)
 		return 0;
-	if (byte == -1) byte = 1;
+#if S_BIG_ENDIAN
+	byte = -byte;
+#endif
 	Z = (_GRD*)malloc(sizeof(_GRD));
 	if (!Z)
 		return 0;
@@ -402,7 +460,7 @@ _GRD* read_raw_file(const char *filename, unsigned int *N, int byte, int isfloat
 		return 0;
 	}
 
-#if defined(INTEGER_GRD)
+#ifdef GRD_INTEGER
 	if (!isfloat && GRD_TYPE_SIZE == byte)
 #else
 	if (isfloat && GRD_TYPE_SIZE == byte)
@@ -413,44 +471,42 @@ _GRD* read_raw_file(const char *filename, unsigned int *N, int byte, int isfloat
 			for (j = 0; j != N[1]; j++)
 				fread(Z->F[k][j],byte,1,in);
 	} else if (isfloat) {
-		if (byte == 8) {
-#if defined(INTEGER_GRD) || GRD_TYPE_SIZE == 4
-			double df;
+		if (abs(byte) == 8) {
+#if defined(GRD_INTEGER) || GRD_TYPE_SIZE == 4
 			for (k = 0; k != N[2]; k++)
 				for (j = 0; j != N[1]; j++)
 					for (i = 0; i != N[0]; i++) {
-						fread(&df,byte,1,in);
-						Z->F[k][j][i] = (GRD_data_type)df;
+						fread(&u.ul,8,1,in);
+						if (byte < 0)
+							u.ul = xbswap64(u.ul);
+						Z->F[k][j][i] = (GRD_data_type)u.d;
 					}
 #endif
 		} else {
-#if defined(INTEGER_GRD) || GRD_TYPE_SIZE == 8
-			float f;
+#if defined(GRD_INTEGER) || GRD_TYPE_SIZE == 8
 			for (k = 0; k != N[2]; k++)
 				for (j = 0; j != N[1]; j++)
 					for (i = 0; i != N[0]; i++) {
-						fread(&f,byte,1,in);
-						Z->F[k][j][i] = (GRD_data_type)f;
+						fread(&u.ui,4,1,in);
+						if (byte < 0)
+							u.ui = xbswap32(u.ui);
+						Z->F[k][j][i] = u.f;
 					}
 #endif
 		}
 	} else if (byte < 0) {
-		byte = -byte;
 		for (k = 0; k != N[2]; k++)
 			for (j = 0; j != N[1]; j++)
 				for (i = 0; i != N[0]; i++) {
-					fread(&ui,byte,1,in);
-					if (byte == 2)
-						Z->F[k][j][i] = (ui>>8)|((ui<<8)&0xff00);
-					else //if (byte == 4)
-						Z->F[k][j][i] = (ui>>24)|((ui>>8)&0xff00)|((ui<<8)&0xff0000)|(ui<<24);
+					fread(&u.ui,-byte,1,in);
+					Z->F[k][j][i] = (byte == -2? xbswap16(u.us): xbswap32(u.ui));
 				}
 	} else {
 		for (k = 0; k != N[2]; k++)
 			for (j = 0; j != N[1]; j++)
 				for (i = 0; i != N[0]; i++) {
-					fread(&ui,byte,1,in);
-					Z->F[k][j][i] = ui;
+					fread(&u.ui,byte,1,in);
+					Z->F[k][j][i] = (byte == 2? u.us: u.ui);
 				}
 	}
 	fclose(in);
@@ -489,6 +545,9 @@ _GRD* read_dat_file(const char *filename) {
 	fread(&nx,sizeof(short int),1,in);
 	fread(&ny,sizeof(short int),1,in);
 	fread(&nz,sizeof(short int),1,in);
+#if S_BIG_ENDIAN
+	nx = xbswap16(nx); ny = xbswap16(ny); nz = xbswap16(nz);
+#endif
 	Z->L[0] = Z->N[0] = nx - 1;
 	Z->L[1] = Z->N[1] = ny - 1;
 	Z->L[2] = Z->N[2] = nz - 1;
@@ -502,7 +561,11 @@ _GRD* read_dat_file(const char *filename) {
 		for (j = 0; j != ny; j++)
 			for (i = 0; i != nx; i++) {
 				fread(&n,sizeof(short int),1,in);
+#if S_BIG_ENDIAN
+				Z->F[nz][j][i] = xbswap16(n);
+#else
 				Z->F[nz][j][i] = n;
+#endif
 			}
 	fclose(in);
 #ifndef GRD_ORTHOGONAL
@@ -513,11 +576,11 @@ _GRD* read_dat_file(const char *filename) {
 }
 
 /******************************************************************
-	set_data_pointer creates a _GRD struct from an external data array. data
-	must be stored with the nested inner loop running from i = 0 to Nx - 1
-	and the outer loop from k = 0 to Nz - 1. The data will not be erased by
-	free_memory_grd function. The function returns a pointer to the created
-	struct.
+	grid_from_data_pointer creates a _GRD struct from an external data array.
+	The data must be stored with the nested inner loop running from i = 0 to
+	Nx - 1 and the outer loop from k = 0 to Nz - 1. The data will not be erased
+	by the free_memory_grd function. The function returns a pointer to the
+	created struct.
 */
 _GRD* grid_from_data_pointer(unsigned int Nx, unsigned int Ny, unsigned int Nz, GRD_data_type* data) {
 	if (!data || Nx == 0 || Ny == 0 || Nz == 0)
@@ -563,9 +626,9 @@ _GRD* grid_from_data_pointer(unsigned int Nx, unsigned int Ny, unsigned int Nz, 
 	return Z;
 }
 
-/******************************************************************
-*/
-_GRD* generate_grid_from_fn(double xi, double yi, double zi, double xf, double yf, double zf, double dx, double dy, double dz, double (*fn)(double x, double y, double z)) {
+/******************************************************************/
+_GRD* generate_grid_from_fn(double xi, double yi, double zi, double xf, double yf, double zf,
+	double dx, double dy, double dz, double (*fn)(double x, double y, double z)) {
 	if (dx <= 0 || dy <= 0 || dz <= 0 || xi == xf || yi == yf || zi == zf)
 		return 0;
 

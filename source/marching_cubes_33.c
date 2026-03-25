@@ -17,12 +17,13 @@
 	August 2021
 	February 2022
 	February 2026
+	March 2026
 */
 
 #ifndef marching_cubes_33_c
 #define marching_cubes_33_c
 
-#if defined(marching_cubes_33_h) && !defined(compiling_libMC33) && defined(__cplusplus)
+#if defined(marching_cubes_33_h) && defined(__cplusplus)
 #error ***Do not include the file marching_cubes_33.h***
 #include "*" //to abort the compilation
 #endif
@@ -39,12 +40,24 @@
 #include "MC33_LookUpTable.h"
 #include "../include/marching_cubes_33.h"
 
+#ifndef S_BIG_ENDIAN
+#if !defined(_MSC_VER) || defined(__clang__)
+#define S_BIG_ENDIAN (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#else
+#define S_BIG_ENDIAN 0
+#endif
+#endif // S_BIG_ENDIAN
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
 
-#if defined (__SSE__) || ((defined (_M_IX86) || defined (_M_X64)) && !defined(_CHPE_ONLY_))
+#ifndef USE_MM_RSQRT_SS
+#define USE_MM_RSQRT_SS 1
+#endif
+
+#if defined (__SSE__) || ((defined (_M_IX86) || defined (_M_X64)) && !defined(_CHPE_ONLY_)) && USE_MM_RSQRT_SS
 // https://stackoverflow.com/questions/59644197/inverse-square-root-intrinsics
 // faster than 1.0f/std::sqrt, but with little accuracy.
 #include <immintrin.h>
@@ -53,16 +66,17 @@ inline float invSqrt(float f) {
 	temp = _mm_rsqrt_ss(temp);
 	return _mm_cvtss_f32(temp);
 }
-#else
 #include <math.h>
+#else
 inline float invSqrt(float f) {
-	return 1.0/sqrt(f);
+	return 1.0f/sqrtf(f);
 }
 #endif
 
 #ifndef DEFAULT_SURFACE_COLOR
-#define DEFAULT_SURFACE_COLOR 0xff5c5c5c;
+#define DEFAULT_SURFACE_COLOR 0xff5c5c5c /* RGBA 0xAABBGGRR: red 92 green 92 blue 92 (grey) */
 #endif
+
 int DefaultColorMC = DEFAULT_SURFACE_COLOR;
 
 /****************** Surface managing functions ****************/
@@ -77,69 +91,130 @@ void free_surface_memory(surface *S) {
 	}
 }
 
+void adjustvectorlenght_s(surface *S) {
+	if (S) {
+		if (S->capv > S->nV) {
+			void *v = malloc(sizeof(int)*S->nV);
+			if (!v)
+				return;
+			memcpy(v,S->color,sizeof(int)*S->nV);
+			free(S->color);
+			S->color = (int *)v;
+			v = malloc(3*sizeof(float)*S->nV);
+			if (!v)
+				return;
+			memcpy(v,S->N,3*sizeof(float)*S->nV);
+			free(S->N);
+			S->N = (float (*)[3])v;
+			v = malloc(3*sizeof(MC33_real)*S->nV);
+			if (!v)
+				return;
+			memcpy(v,S->V,3*sizeof(MC33_real)*S->nV);
+			free(S->V);
+			S->V = (MC33_real (*)[3])v;
+			S->capv = S->nV;
+		}
+		if (S->capt > S->nT) {
+			void *v = malloc(3*sizeof(int)*S->nT);
+			if (!v)
+				return;
+			memcpy(v,S->T,3*sizeof(int)*S->nT);
+			free(S->T);
+			S->T = (unsigned int (*)[3])v;
+			S->capt = S->nT;
+		}
+	}
+}
+
+#if GRD_TYPE_SIZE == 8
+#define MC33_surf_magic_num 0x6575732e //".sud"
+#define MC33_surf_magic_nu2 0x7075732e
+#define MC33_real2 float
+#else
+#define MC33_surf_magic_num 0x7075732e //".sup"
+#define MC33_surf_magic_nu2 0x6575732e
+#define MC33_real2 double
+#endif
+
 int write_bin_s(surface *S, const char *filename) {
-	int i;
+	int i = MC33_surf_magic_num;
+	adjustvectorlenght_s(S);
 	FILE *out = fopen(filename,"wb");
 	if (!out)
 		return -1;
-	fputs(".sup",out);
-
-	fwrite(S->user.f + 3,sizeof(float),1,out);
+	fwrite(&i,sizeof(int),1,out);
+	fwrite(&S->iso,sizeof(MC33_real),1,out);
 	fwrite(&S->nV,sizeof(int),1,out);
 	fwrite(&S->nT,sizeof(int),1,out);
 
-	fwrite(S->T,3*S->nT*sizeof(int),1,out);
-	fwrite(S->V,3*S->nV*sizeof(float),1,out);
-	fwrite(S->N,3*S->nV*sizeof(float),1,out);
-	i = fwrite(S->color,S->nV*sizeof(int),1,out);
+	fwrite(S->T,3*sizeof(int)*S->nT,1,out);
+	fwrite(S->V,3*sizeof(MC33_real)*S->nV,1,out);
+	fwrite(S->N,3*sizeof(float)*S->nV,1,out);
+	i = fwrite(S->color,sizeof(int)*S->nV,1,out);
 	fclose(out);
 	return -(i != 1);
 }
 
 surface* read_bin_s(const char *filename) {
 	surface *S;
-	int i;
-
+	int n;
 	FILE *in = fopen(filename,"rb");
 	if (!in)
 		return 0;
-	fread(&i,sizeof(int),1,in);
+	fread(&n,sizeof(int),1,in);
 	S = (surface*)malloc(sizeof(surface));
-	if (i != 0x7075732e || !S) {
+	if (!S || (n != MC33_surf_magic_num && n != MC33_surf_magic_nu2)) {
 		fclose(in);
 		free(S);
 		return 0;
 	}
-	fread(S->user.f + 3,sizeof(float),1,in);
+	
+	if (n == MC33_surf_magic_num)
+		fread(&S->iso,sizeof(MC33_real),1,in);
+	else {
+		MC33_real2 iso;
+		fread(&iso,sizeof(MC33_real2),1,in);
+		S->iso = (MC33_real)iso;
+	}
 	fread(&S->nV,sizeof(int),1,in);
 	fread(&S->nT,sizeof(int),1,in);
 
-	S->T = (unsigned int (*)[3])malloc(S->nT*sizeof(void*));
-	S->V = (float (*)[3])malloc(S->nV*sizeof(void*));
-	S->N = (float (*)[3])malloc(S->nV*sizeof(void*));
-	S->color = (int *)malloc(S->nV*sizeof(void*));
+	S->T = (unsigned int (*)[3])malloc(3*sizeof(int)*S->nT);
+	S->V = (MC33_real (*)[3])malloc(3*sizeof(MC33_real)*S->nV);
+	S->N = (float (*)[3])malloc(3*sizeof(float)*S->nV);
+	S->color = (int *)malloc(sizeof(int)*S->nV);
 	if (!(S->T && S->V && S->N && S->color)) {
 		free_surface_memory(S);
 		fclose(in);
 		return 0;
 	}
-	i = !fread(S->T,3*S->nT*sizeof(int),1,in);
-	i += !fread(S->V,3*S->nV*sizeof(float),1,in);
-	i += !fread(S->N,3*S->nV*sizeof(float),1,in);
-	i += !fread(S->color,S->nV*sizeof(int),1,in);
-	fclose(in);
-	if (i) {
-		free_surface_memory(S);
-		return 0;
+	fread(S->T,3*sizeof(int)*S->nT,1,in);
+	if (n == MC33_surf_magic_num)
+		fread(S->V,3*sizeof(MC33_real)*S->nV,1,in);
+	else {
+		for (unsigned int j = 0; j < S->nV; j++) {
+			MC33_real2 v[3];
+			fread(v,sizeof v,1,in);
+			for (int k = 0; k < 3; k++)
+				S->V[j][k] = v[k];
+		}
 	}
+	fread(S->N,3*sizeof(float)*S->nV,1,in);
+	if (!fread(S->color,sizeof(int)*S->nV,1,in)) {
+		free_surface_memory(S);
+		S = 0;
+	}
+	fclose(in);
 	return S;
 }
 
 int write_txt_s(surface *S, const char *filename) {
 	FILE *out;
 	unsigned int i, *t;
-	float *r;
+	MC33_real *r;
+	float *n;
 
+	adjustvectorlenght_s(S);
 	out = fopen(filename,"w");
 	if (!out)
 		return -1;
@@ -160,8 +235,8 @@ int write_txt_s(surface *S, const char *filename) {
 
 	fprintf(out,"\n\nNORMALS:\n");
 	for (i = 0; i != S->nV; i++) {
-		r = S->N[i];
-		fprintf(out,"%9.6f %9.6f %9.6f\n",r[0],r[1],r[2]);
+		n = S->N[i];
+		fprintf(out,"%9.6f %9.6f %9.6f\n",n[0],n[1],n[2]);
 	}
 
 	fprintf(out,"\n\nCOLORS:\n");
@@ -175,9 +250,11 @@ int write_txt_s(surface *S, const char *filename) {
 int write_obj_s(surface *S, const char *filename) {
 	FILE *out;
 	unsigned int i, *t;
-	float *r;
+	MC33_real *r;
+	float *n;
 	char s0[12], s1[12], s2[12];
 
+	adjustvectorlenght_s(S);
 	out = fopen(filename,"w");
 	if (!out)
 		return -1;
@@ -190,8 +267,8 @@ int write_obj_s(surface *S, const char *filename) {
 
 	fprintf(out,"# NORMALS:\n");
 	for (i = 0; i != S->nV; i++) {
-		r = S->N[i];
-		fprintf(out,"vn %f %f %f\n",r[0],r[1],r[2]);
+		n = S->N[i];
+		fprintf(out,"vn %f %f %f\n",n[0],n[1],n[2]);
 	}
 
 	fprintf(out,"# TRIANGLES %d:\n",S->nT);
@@ -211,10 +288,12 @@ int write_obj_s(surface *S, const char *filename) {
 int write_ply_s(surface *S, const char *filename, const char* author, const char* object) {
 	FILE *out;
 	unsigned int i, *t;
-	float *r;
+	MC33_real *r;
+	float *n;
 	unsigned char* c;
 	char empty = 0;
 
+	adjustvectorlenght_s(S);
 	out = fopen(filename,"w");
 	if (!out)
 		return -1;
@@ -226,13 +305,15 @@ int write_ply_s(surface *S, const char *filename, const char* author, const char
 
 	fprintf(out,"ply\nformat ascii 1.0\ncomment author: %s\ncomment object: %s\n",author,object);
 	fprintf(out,"element vertex %d\nproperty float x\nproperty float y\nproperty float z",S->nV);
+	fprintf(out,"\nproperty float nx\nproperty float ny\nproperty float nz");
 	fprintf(out,"\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nelement face");
 	fprintf(out," %d\nproperty list uchar int vertex_index\nend_header",S->nT);
 
 	for (i = 0; i < S->nV; i++) {
 		r = S->V[i];
+		n = S->N[i];
 		c = (unsigned char*)(S->color + i);
-		fprintf(out,"\n%f %f %f %d %d %d",r[0],r[1],r[2],c[0],c[1],c[2]);
+		fprintf(out,"\n%f %f %f %f %f %f %d %d %d",r[0],r[1],r[2],n[0],n[1],n[2],c[0],c[1],c[2]);
 	}
 
 	for (i = 0; i < S->nT; i++) {
@@ -252,39 +333,32 @@ Vertices:           Faces:
     3 __________2        ___________
    /|          /|      /|          /|
   / |         / |     / |   2     / |
-7/__________6/  |    /  |     4  /  |
-|   |       |   |   |¯¯¯¯¯¯¯¯¯¯¯| 1 |     z
+7/__________6/  |    /________4_ /  |
+|   |       |   |   |   |       | 1 |     z
 |   0_______|___1   | 3 |_______|___|     |
 |  /        |  /    |  /  5     |  /      |____y
 | /         | /     | /     0   | /      /
 4/__________5/      |/__________|/      x
 
-
 This function return a vector with all six test face results (face[6]). Each
 result value is 1 if the positive face vertices are joined, -1 if the negative
 vertices are joined, and 0 (unchanged) if the test must no be applied. The
 return value of this function is the the sum of all six results.*/
-int MC33_faceTests(int *face, int ind, const float *v) {
-	if (ind&0x80)//vertex 0
-	{
+int MC33_faceTests(int *face, int ind, const MC33_real *v) {
+	if (ind&0x80) {//vertex 0
 		face[0] = ((ind&0xCC) == 0x84? (v[0]*v[5] < v[1]*v[4]? -1: 1): 0);//0x84 = 10000100, vertices 0 and 5
 		face[3] = ((ind&0x99) == 0x81? (v[0]*v[7] < v[3]*v[4]? -1: 1): 0);//0x81 = 10000001, vertices 0 and 7
 		face[4] = ((ind&0xF0) == 0xA0? (v[0]*v[2] < v[1]*v[3]? -1: 1): 0);//0xA0 = 10100000, vertices 0 and 2
-	}
-	else
-	{
+	} else {
 		face[0] = ((ind&0xCC) == 0x48? (v[0]*v[5] < v[1]*v[4]? 1: -1): 0);//0x48 = 01001000, vertices 1 and 4
 		face[3] = ((ind&0x99) == 0x18? (v[0]*v[7] < v[3]*v[4]? 1: -1): 0);//0x18 = 00011000, vertices 3 and 4
 		face[4] = ((ind&0xF0) == 0x50? (v[0]*v[2] < v[1]*v[3]? 1: -1): 0);//0x50 = 01010000, vertices 1 and 3
 	}
-	if (ind&0x02)//vertex 6
-	{
+	if (ind&0x02) {//vertex 6
 		face[1] = ((ind&0x66) == 0x42? (v[1]*v[6] < v[2]*v[5]? -1: 1): 0);//0x42 = 01000010, vertices 1 and 6
 		face[2] = ((ind&0x33) == 0x12? (v[3]*v[6] < v[2]*v[7]? -1: 1): 0);//0x12 = 00010010, vertices 3 and 6
 		face[5] = ((ind&0x0F) == 0x0A? (v[4]*v[6] < v[5]*v[7]? -1: 1): 0);//0x0A = 00001010, vertices 4 and 6
-	}
-	else
-	{
+	} else {
 		face[1] = ((ind&0x66) == 0x24? (v[1]*v[6] < v[2]*v[5]? 1: -1): 0);//0x24 = 00100100, vertices 2 and 5
 		face[2] = ((ind&0x33) == 0x21? (v[3]*v[6] < v[2]*v[7]? 1: -1): 0);//0x21 = 00100001, vertices 2 and 7
 		face[5] = ((ind&0x0F) == 0x05? (v[4]*v[6] < v[5]*v[7]? 1: -1): 0);//0x05 = 00000101, vertices 5 and 7
@@ -294,7 +368,7 @@ int MC33_faceTests(int *face, int ind, const float *v) {
 
 /* Faster function for the face test, the test is applied to only one face
 (int face). This function is only used for the cases 3 and 6 of MC33*/
-int MC33_faceTest1(int face, const float *v) {
+int MC33_faceTest1(int face, const MC33_real *v) {
 	switch (face) {
 	case 0:
 		return (v[0]*v[5] < v[1]*v[4]? 0x48: 0x84);
@@ -311,7 +385,12 @@ int MC33_faceTest1(int face, const float *v) {
 	}
 }
 
-// an ugly signbit for float type with
+#ifndef USE_INTERNAL_SIGNBIT
+#define USE_INTERNAL_SIGNBIT 1
+#endif
+
+#if USE_INTERNAL_SIGNBIT
+// an ugly signbit for float or double type with
 // warning: dereferencing type-punned pointer will break strict-aliasing rules
 // Silence dereferencing type-punned pointer warning in GCC
 #ifdef __GNUC__
@@ -319,12 +398,26 @@ int MC33_faceTest1(int face, const float *v) {
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
 
-inline unsigned int signbf(float x) {
-	return ((*(unsigned int*)(void*)(&x))&0x80000000);
+#if !S_BIG_ENDIAN && GRD_TYPE_SIZE == 8
+inline unsigned int signbf(const double x) {
+	return (*((const unsigned int*)(const void*)(&x) + 1)&0x80000000);
 }
+#else
+inline unsigned int signbf(const MC33_real x) {
+	return (*((const unsigned int*)(const void*)(&x))&0x80000000);
+}
+#endif
+
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
+#else
+#ifdef __cplusplus
+#define signbf std::signbit
+#else
+#define signbf signbit
+#endif
+#endif // USE_INTERNAL_SIGNBIT
 
 /******************************************************************
 Interior test function. If the test is positive, the function returns a value
@@ -335,13 +428,13 @@ of the vertices 0, 1, 2 or 3 is joined to the center point of the cube (case
 13.5.2), returns 1 if one of the vertices 4, 5, 6 or 7 is joined to the
 center point of the cube (case 13.5.2 too), and it returns 0 if the vertices
 are no joined (case 13.5.1)*/
-int MC33_interiorTest(int i, int flag13, const float *v) {
+int MC33_interiorTest(int i, int flag13, const MC33_real *v) {
 	//Signs of cube vertices were changed to use signbit function in calc_isosurface
 	//A0 = -v[0], B0 = -v[1], C0 = -v[2], D0 = -v[3]
 	//A1 = -v[4], B1 = -v[5], C1 = -v[6], D1 = -v[7]
 	//But the function still works
-	float At = v[4] - v[0], Bt = v[5] - v[1], Ct = v[6] - v[2], Dt = v[7] - v[3];
-	float t = At*Ct - Bt*Dt; // the "a" value.
+	MC33_real At = v[4] - v[0], Bt = v[5] - v[1], Ct = v[6] - v[2], Dt = v[7] - v[3];
+	MC33_real t = At*Ct - Bt*Dt; // the "a" value.
 	if (signbf(t)) {
 		if (i&0x01)
 			return 0;
@@ -381,22 +474,27 @@ void MC33_fail_mem_T(MC33 *M) {
 	return;
 }
 
+#ifndef MC33_NORMAL_NEG
+#define MC33_NORMAL_NEG 0 /* If it is 1, the front and back surfaces are exchanged. */
+#endif
+
 /******************************************************************
 Assign memory for the vertex r[3], normal n[3]. The return value is the new
 vertex label.
 */
-unsigned int MC33_spn0(void *mc33, float *r) {
+unsigned int MC33_spn0(void *mc33, MC33_real *r) {
 	MC33 *M = (MC33 *)mc33;
 	unsigned int nv = M->nV++;
-	float t, *p;
+	MC33_real *p;
+	float t, *n;
 	if (nv == M->capv) {
 		void *pt;
-		pt = realloc(M->N,nv*6*sizeof(float)); // the memory space is duplicated
+		pt = realloc(M->N,nv*(6*sizeof(float))); // the memory space is duplicated
 		if (pt) {
 			M->N = (float(*)[3])pt;
-			pt = realloc(M->V,nv*6*sizeof(float));
+			pt = realloc(M->V,nv*(6*sizeof(MC33_real)));
 			if (pt) {
-				M->V = (float(*)[3])pt;
+				M->V = (MC33_real(*)[3])pt;
 				M->capv <<= 1;
 			}
 			else
@@ -408,27 +506,28 @@ unsigned int MC33_spn0(void *mc33, float *r) {
 	for (int i = 0; i != 3; i++)
 		p[i] = *(r++);
 	// now r points to normal coordinates
-#ifndef MC_NORMAL_NEG
-	t = invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
-#else //MC_NORMAL_NEG reverse the direction of the normal
+#if MC33_NORMAL_NEG // reverse the direction of the normal
 	t = -invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
+#else
+	t = invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
 #endif
-	p = M->N[nv];
-	*p = t * *r; *(++p) = t * *(++r); *(++p) = t * *(++r);
+	n = M->N[nv];
+	*n = t * (float)(*r); *(++n) = t * (float)(*(++r)); *(++n) = t * (float)(*(++r));
 	return nv;
 }
-unsigned int MC33_spnA(void *mc33, float *r) {
+unsigned int MC33_spnA(void *mc33, MC33_real *r) {
 	MC33 *M = (MC33 *)mc33;
 	unsigned int nv = M->nV++;
-	float t, *p;
+	MC33_real *p;
+	float t, *n;
 	if (nv == M->capv) {
 		void *pt;
-		pt = realloc(M->N,nv*6*sizeof(float)); // the memory space is duplicated
+		pt = realloc(M->N,nv*(6*sizeof(float))); // the memory space is duplicated
 		if (pt) {
 			M->N = (float(*)[3])pt;
-			pt = realloc(M->V,nv*6*sizeof(float));
+			pt = realloc(M->V,nv*(6*sizeof(MC33_real)));
 			if (pt) {
-				M->V = (float(*)[3])pt;
+				M->V = (MC33_real(*)[3])pt;
 				M->capv <<= 1;
 			}
 			else
@@ -440,27 +539,28 @@ unsigned int MC33_spnA(void *mc33, float *r) {
 	for (int i = 0; i != 3; i++)
 		p[i] = *(r++)*M->D[i] + M->O[i];
 	// now r points to normal coordinates
-#ifndef MC_NORMAL_NEG
-	t = invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
-#else //MC_NORMAL_NEG reverse the direction of the normal
+#if MC33_NORMAL_NEG // reverse the direction of the normal
 	t = -invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
+#else
+	t = invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
 #endif
-	p = M->N[nv];
-	*p = t * *r; *(++p) = t * *(++r); *(++p) = t * *(++r);
+	n = M->N[nv];
+	*n = t * (float)(*r); *(++n) = t * (float)(*(++r)); *(++n) = t * (float)(*(++r));
 	return nv;
 }
-unsigned int MC33_spnB(void *mc33, float *r) {
+unsigned int MC33_spnB(void *mc33, MC33_real *r) {
 	MC33 *M = (MC33 *)mc33;
 	unsigned int nv = M->nV++;
-	float t, *p;
+	MC33_real *p;
+	float t, *n;
 	if (nv == M->capv) {
 		void *pt;
-		pt = realloc(M->N,nv*6*sizeof(float)); // the memory space is duplicated
+		pt = realloc(M->N,nv*(6*sizeof(float))); // the memory space is duplicated
 		if (pt) {
 			M->N = (float(*)[3])pt;
-			pt = realloc(M->V,nv*6*sizeof(float));
+			pt = realloc(M->V,nv*(6*sizeof(MC33_real)));
 			if (pt) {
-				M->V = (float(*)[3])pt;
+				M->V = (MC33_real(*)[3])pt;
 				M->capv <<= 1;
 			}
 			else
@@ -474,28 +574,29 @@ unsigned int MC33_spnB(void *mc33, float *r) {
 	// now r points to normal coordinates
 	r[0] *= M->ca; // normal[0]
 	r[1] *= M->cb; // normal[1]
-#ifndef MC_NORMAL_NEG
-	t = invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
-#else //MC_NORMAL_NEG reverse the direction of the normal
+#if MC33_NORMAL_NEG // reverse the direction of the normal
 	t = -invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
+#else
+	t = invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
 #endif
-	p = M->N[nv];
-	*p = t * *r; *(++p) = t * *(++r); *(++p) = t * *(++r);
+	n = M->N[nv];
+	*n = t * (float)(*r); *(++n) = t * (float)(*(++r)); *(++n) = t * (float)(*(++r));
 	return nv;
 }
 #ifndef GRD_ORTHOGONAL
-unsigned int MC33_spnC(void *mc33, float *r) {
+unsigned int MC33_spnC(void *mc33, MC33_real *r) {
 	MC33 *M = (MC33 *)mc33;
 	unsigned int nv = M->nV++;
-	float t, *p;
+	MC33_real *p;
+	float t, *n;
 	if (nv == M->capv) {
 		void *pt;
-		pt = realloc(M->N,nv*6*sizeof(float)); // the memory space is duplicated
+		pt = realloc(M->N,nv*(6*sizeof(float))); // the memory space is duplicated
 		if (pt) {
 			M->N = (float(*)[3])pt;
-			pt = realloc(M->V,nv*6*sizeof(float));
+			pt = realloc(M->V,nv*(6*sizeof(MC33_real)));
 			if (pt) {
-				M->V = (float(*)[3])pt;
+				M->V = (MC33_real(*)[3])pt;
 				M->capv <<= 1;
 			}
 			else
@@ -509,13 +610,13 @@ unsigned int MC33_spnC(void *mc33, float *r) {
 		p[i] = *(r++) + M->O[i];
 	// now r points to normal coordinates
 	mult_Abf(M->A_,r,r,1);
-#ifndef MC_NORMAL_NEG
-	t = invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
-#else //MC_NORMAL_NEG reverse the direction of the normal
+#if MC33_NORMAL_NEG // reverse the direction of the normal
 	t = -invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
+#else
+	t = invSqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
 #endif
-	p = M->N[nv];
-	*p = t * *r; *(++p) = t * *(++r); *(++p) = t * *(++r);
+	n = M->N[nv];
+	*n = t * (float)(*r); *(++n) = t * (float)(*(++r)); *(++n) = t * (float)(*(++r));
 	return nv;
 }
 #endif
@@ -524,7 +625,7 @@ unsigned int MC33_spnC(void *mc33, float *r) {
 Auxiliary function that calculates the normal if a vertex
 of the cube lies on the isosurface.
 */
-unsigned int MC33_surfint(MC33 *M, unsigned int x, unsigned int y, unsigned int z, float *r) {
+unsigned int MC33_surfint(MC33 *M, unsigned int x, unsigned int y, unsigned int z, MC33_real *r) {
 	r[0] = x; r[1] = y; r[2] = z;
 	if (x == 0)
 		r[3] = M->F[z][y][0] - M->F[z][y][1];
@@ -544,9 +645,13 @@ unsigned int MC33_surfint(MC33 *M, unsigned int x, unsigned int y, unsigned int 
 		r[5] = M->F[z - 1][y][x] - M->F[z][y][x];
 	else
 		r[5] = 0.5f*(M->F[z - 1][y][x] - M->F[z + 1][y][x]);
-	return M->store(M, r);
+	return M->store(M,r);
 }
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuse-after-free"
+#endif
 /******************************************************************
 This function find the MC33 case (using the index i, and the face and interior
 tests). The correct triangle pattern is obtained from the arrays contained in
@@ -565,16 +670,16 @@ also calculated here (using trilinear interpolation).
 The temporary matrices: M->Lz, M->Dx, M->Dy, M->Ux and M->Uy are filled
 and used here.*/
 #define FF 0xFFFFFFFF
-void MC33_findCase(MC33 *M, unsigned int x, unsigned int y, unsigned int z, unsigned int i, const float *v) {
+void MC33_findCase(MC33 *M, unsigned int x, unsigned int y, unsigned int z, unsigned int i, const MC33_real *v) {
 	unsigned int p[13] = {FF,FF,FF,FF,FF,FF,FF,FF,FF,FF,FF,FF,FF};
 	unsigned int ti[3];//for vertex indices of a triangle
 	union { // memory saving
 		int f[6];//for the face tests
-		float r[6];//for intercept and normal coordinates
+		MC33_real r[6];//for intercept and normal coordinates
 	} u;
 	const unsigned short int *pcase = MC33_all_tables;
 	unsigned int c, m, k, n;
-	float t;
+	MC33_real t;
 	if (i&0x80) {
 		c = pcase[i^0xFF];
 		m = (c&0x800) == 0;
@@ -708,7 +813,7 @@ void MC33_findCase(MC33 *M, unsigned int x, unsigned int y, unsigned int z, unsi
 							u.r[3] = (v[4] - v[0])*(1 - t) + (v[5] - v[1])*t;
 							u.r[4] = v[1] - v[0];
 							u.r[5] = (v[3] - v[0])*(1 - t) + (v[2] - v[1])*t;
-							p[0] = M->store(M, u.r);
+							p[0] = M->store(M,u.r);
 						}
 						M->Dy[y][0] = ti[--k] = p[0];
 					}
@@ -747,7 +852,7 @@ void MC33_findCase(MC33 *M, unsigned int x, unsigned int y, unsigned int z, unsi
 										+ (M->F[z + 1][y][0] - M->F[z + 1][y + 2][0])*t):
 										(v[1] - v[0])*(1 - t) + (v[2] - v[3])*t);
 							u.r[5] = v[2] - v[1];
-							p[1] = M->store(M, u.r);
+							p[1] = M->store(M,u.r);
 						}
 						M->Lz[y + 1][0] = ti[--k] = p[1];
 					}
@@ -783,7 +888,7 @@ void MC33_findCase(MC33 *M, unsigned int x, unsigned int y, unsigned int z, unsi
 							u.r[5] = (z + 1 < M->nz? 0.5f*((M->F[z][y][0] - M->F[z + 2][y][0])*(1 - t)
 										+ (M->F[z][y + 1][0] - M->F[z + 2][y + 1][0])*t):
 										(v[3] - v[0])*(1 - t) + (v[2] - v[1])*t);
-							p[2] = M->store(M, u.r);
+							p[2] = M->store(M,u.r);
 						}
 						M->Uy[y][0] = ti[--k] = p[2];
 					}
@@ -1131,23 +1236,26 @@ void MC33_findCase(MC33 *M, unsigned int x, unsigned int y, unsigned int z, unsi
 			if (M->nT == M->capt) {
 				unsigned int (*pt)[3] = M->T;
 				M->capt <<= 1;
-				M->T = (unsigned int (*)[3])realloc(pt,M->capt*3*sizeof(int));
+				M->T = (unsigned int (*)[3])realloc(pt,M->capt*(3*sizeof(int)));
 				if (!M->T) {
 					M->T = pt;
 					MC33_fail_mem_T(M);
 				}
 			}
 			unsigned int *vp = M->T[M->nT++];
-#ifndef MC_NORMAL_NEG
-			*vp = ti[n]; *(++vp) = ti[m]; *(++vp) = ti[2];
-#else
+#if MC33_NORMAL_NEG
 			*vp = ti[m]; *(++vp) = ti[n]; *(++vp) = ti[2];
+#else
+			*vp = ti[n]; *(++vp) = ti[m]; *(++vp) = ti[2];
 #endif
 		}
 	}
 }
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
-void MC33_Case_count(MC33 *M, unsigned int x, unsigned int y, unsigned int z, unsigned int i, const float *v) {
+void MC33_Case_count(MC33 *M, unsigned int x, unsigned int y, unsigned int z, unsigned int i, const MC33_real *v) {
 	unsigned int p[13] = {FF,FF,FF,FF,FF,FF,FF,FF,FF,FF,FF,FF,FF};
 	union {
 		int f[6];
@@ -1635,6 +1743,10 @@ void free_MC33(MC33 *M) {
 	}
 }
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 MC33 *create_MC33(_GRD* G) {
 	unsigned int x, y;
 	MC33 *M;
@@ -1697,11 +1809,14 @@ MC33 *create_MC33(_GRD* G) {
 	free_MC33(M);
 	return 0;
 }
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
-surface* calculate_isosurface(MC33 *M, float iso) {
+surface* calculate_isosurface(MC33 *M, MC33_real iso) {
 	unsigned int x, y, z, Nx = M->nx;
-	float Vt[12];
-	float *v1 = Vt, *v2 = Vt + 4;
+	MC33_real Vt[12];
+	MC33_real *v1 = Vt, *v2 = Vt + 4;
 	const GRD_data_type ***F = M->F, **F0, **F1, *V00, *V01, *V11, *V10;
 	surface *S = (surface*)malloc(sizeof(surface));
 	if (!S)
@@ -1711,7 +1826,7 @@ surface* calculate_isosurface(MC33 *M, float iso) {
 	M->capt = M->capv = 4096;
 	M->T = (unsigned int(*)[3])malloc(3*4096*sizeof(int));
 	M->N = (float(*)[3])malloc(3*4096*sizeof(float));
-	M->V = (float(*)[3])malloc(3*4096*sizeof(float));
+	M->V = (MC33_real(*)[3])malloc(3*4096*sizeof(MC33_real));
 	M->iso = iso;
 	if (M->V)
 		for (z = 0; z != M->nz; z++) {
@@ -1733,7 +1848,7 @@ surface* calculate_isosurface(MC33 *M, float iso) {
 				if (signbf(v2[1])) i |= 4;
 				if (signbf(v2[0])) i |= 8;
 				for (x = 0; x != Nx; x++) {
-					{float *P = v1; v1 = v2; v2 = P;}//v1 and v2 are exchanged
+					{MC33_real *P = v1; v1 = v2; v2 = P;}//v1 and v2 are exchanged
 					v2[0] = iso - *(++V00);
 					v2[1] = iso - *(++V01);
 					v2[2] = iso - *(++V11);
@@ -1743,7 +1858,7 @@ surface* calculate_isosurface(MC33 *M, float iso) {
 					if (signbf(v2[1])) i |= 4;
 					if (signbf(v2[0])) i |= 8;
 					if (i && i^0xFF) {
-						if (v1 > v2) {float *t = v2; float *s = t + 8; *s = *t; *(++s) = *(++t); *(++s) = *(++t); *(++s) = *(++t);}
+						if (v1 > v2) {MC33_real *t = v2; MC33_real *s = t + 8; *s = *t; *(++s) = *(++t); *(++s) = *(++t); *(++s) = *(++t);}
 						MC33_findCase(M,x,y,z,i,v1);
 					}
 				}
@@ -1755,7 +1870,7 @@ surface* calculate_isosurface(MC33 *M, float iso) {
 		M->memoryfault = 1;
 	if (M->nV) {
 		M->color = (int*)malloc(M->nV*sizeof(int));
-		memcpy(S, M, offsetof(MC33, iso));
+		memcpy(S, M, offsetof(MC33, memoryfault));
 		if (M->color) {
 			*M->color = DefaultColorMC;
 			while (--M->nV)
@@ -1770,15 +1885,14 @@ surface* calculate_isosurface(MC33 *M, float iso) {
 		free_surface_memory(S);
 		return 0;
 	}
-	S->iso = iso;
 	return S;
 }
 
 // modified from calculate_isosurface function
-unsigned long long size_of_isosurface(MC33 *M, float iso, unsigned int *nV, unsigned int *nT) {
+unsigned long long size_of_isosurface(MC33 *M, MC33_real iso, unsigned int *nV, unsigned int *nT) {
 	unsigned int x, y, z, Nx = M->nx;
-	float Vt[12];
-	float *v1 = Vt, *v2 = Vt + 4;
+	MC33_real Vt[12];
+	MC33_real *v1 = Vt, *v2 = Vt + 4;
 	const GRD_data_type ***F = M->F, **F0, **F1, *V00, *V01, *V11, *V10;
 	M->nT = M->nV = 0;
 	M->iso = iso;
@@ -1799,7 +1913,7 @@ unsigned long long size_of_isosurface(MC33 *M, float iso, unsigned int *nV, unsi
 			if (signbf(v2[1])) i |= 4;
 			if (signbf(v2[0])) i |= 8;
 			for (x = 0; x != Nx; x++) {
-				{float *P = v1; v1 = v2; v2 = P;}
+				{MC33_real *P = v1; v1 = v2; v2 = P;}
 				v2[0] = iso - *(++V00);
 				v2[1] = iso - *(++V01);
 				v2[2] = iso - *(++V11);
@@ -1809,7 +1923,7 @@ unsigned long long size_of_isosurface(MC33 *M, float iso, unsigned int *nV, unsi
 				if (signbf(v2[1])) i |= 4;
 				if (signbf(v2[0])) i |= 8;
 				if (i && i^0xFF) {
-					if (v1 > v2) {float *t = v2; float *s = t + 8; *s = *t; *(++s) = *(++t); *(++s) = *(++t); *(++s) = *(++t);}
+					if (v1 > v2) {MC33_real *t = v2; MC33_real *s = t + 8; *s = *t; *(++s) = *(++t); *(++s) = *(++t); *(++s) = *(++t);}
 					MC33_Case_count(M,x,y,z,i,v1);
 				}
 			}
@@ -1822,7 +1936,7 @@ unsigned long long size_of_isosurface(MC33 *M, float iso, unsigned int *nV, unsi
 	if (nT)
 		*nT = M->nT;
 	// number of vertices * (size of vertex and normal + size of color ) + number of triangle * size of triangle + size of struct surface
-	return M->nV * (6 * sizeof(float) + sizeof(int)) + M->nT * (3 * sizeof(int)) + sizeof(surface);
+	return M->nV * (6 * sizeof(MC33_real) + sizeof(int)) + M->nT * (3 * sizeof(int)) + sizeof(surface);
 }
 
 #ifdef _MSC_VER
