@@ -4,6 +4,7 @@
 	December 2021
 	September 2023
 	February 2026
+	March 2026
 	This is an open source code. The distribution and use rights are under the terms of the MIT license (https://opensource.org/licenses/MIT)
 */
 
@@ -41,7 +42,7 @@ void drawsurface(surface *S) {
 	glEnableClientState(GL_NORMAL_ARRAY);
 	glEnableClientState(GL_COLOR_ARRAY);
 
-	glVertexPointer(3, GL_FLOAT, 0, S->V);
+	glVertexPointer(3, (GRD_TYPE_SIZE == 8? GL_DOUBLE: GL_FLOAT), 0, S->V);
 	glNormalPointer(GL_FLOAT, 0, S->N);
 	glColorPointer(3, GL_UNSIGNED_BYTE, 4, S->color);
 
@@ -57,7 +58,7 @@ void drawdraftsurface(surface *S) {
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_COLOR_ARRAY);
 
-	glVertexPointer(3, GL_FLOAT, 12*sizeof(float), S->V);
+	glVertexPointer(3, (GRD_TYPE_SIZE == 8? GL_DOUBLE: GL_FLOAT), 12*sizeof(MC33_real), S->V);
 	glColorPointer(3, GL_UNSIGNED_BYTE, 16, S->color);
 
 	glDrawArrays(GL_POINTS, 0, S->nV>>2);
