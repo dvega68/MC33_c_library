@@ -1,10 +1,10 @@
-### Feel free to use the MC33 C library.
+### Feel free to use the Marching cubes 33 C library.
 
 ---
 
 #### INFO:
 
-MC33 library version 5.4
+MC33 library version 5.5
 
 This library is a new version of the MC33 library of the paper:  
 Vega, D., Abache, J., Coll, D., [A Fast and Memory-Saving Marching Cubes 33 implementation with the correct interior test](http://jcgt.org/published/0008/03/01), *Journal of Computer Graphics Techniques (JCGT)*, vol. 8, no. 3, 1-18, 2019.
@@ -36,7 +36,7 @@ GLUT_example/makefiledebian.mak (Debian GCC makefile)
 
 #### CUSTOMIZING:
 
-There are some options that can be modified before compiling the library. You can do it by editing the marching_cubes_33.h file:
+There are some options that can be modified before compiling the library. You can do it by editing some files:
 
 1. To change the data type of the grid (the default value is float) define GRD_TYPE_SIZE and/or GRD_INTEGER (marching_cubes_33.h). For example:
 	```c
@@ -54,20 +54,22 @@ There are some options that can be modified before compiling the library. You ca
 	#define GRD_TYPE_SIZE 1 // the data type is unsigned char
 	```
 
-2. If you do not use inclined grids, you can define GRD_ORTHOGONAL:
+2. If you do not use inclined grids, you can define GRD_ORTHOGONAL (in marching_cubes_33.h):
 	```c
 	#define GRD_ORTHOGONAL
 	```
 
-3. If you need to exchange the front and back surfaces, define MC33_NORMAL_NEG:
+3. If you need to exchange the front and back surfaces, define MC33_NORMAL_NEG (in libMC33.c):
 	```c
 	#define MC33_NORMAL_NEG
 	```
 
-4. The default color of isosurfaces, can be changed:
+4. The default color of isosurfaces, can be changed (in libMC33.c):
 	```c
 	#define DEFAULT_SURFACE_COLOR 0xFF18A0C8// RGBA 0xAABBGGRR: red 200, green 160, blue 24
 	```
+
+5. In libMC33.c there are other two macros that can be changed: `USE_INTERNAL_SIGNBIT` and `USE_MM_RSQRT_SS`.
 
 ---
 
@@ -85,13 +87,12 @@ There are some options that can be modified before compiling the library. You ca
 	```
 	and put in the linker options of your program makefile: -lMC33
 
-
 2. Instead of compiling the library, you can directly include the MC33 code files in your code. In only one file in your project, before use the MC33 code, put (do not include marching_cubes_33.h):
 	```c
 	#include "..Path ../source/marching_cubes_33.c"
 	#include "..Path ../source/MC33_util_grd.c"
 	```
-	You must define mc33_no_lib before including marching_cubes_33.h in the other files in your project that also use MC33 code (this avoids the declaration `extern "C"` in marching_cubes_33.h).
+	If you are using a C++ compiler, you must define mc33_no_lib before including marching_cubes_33.h in the other files in your project that use MC33 code (this avoids the `extern "C"` declaration in marching_cubes_33.h).
 
 ---
 
@@ -120,13 +121,16 @@ In the GLUT example, the file containing the grid must be passed to the program 
 
 #### USAGE:
 
-You can declare a `_GRD` pointer and then use one of the functions to load files that contain grids (`read_grd`, `read_scanfiles`, `read_raw_file` or `read_dat_file`, found in the MC33_util_grd.c file):
+1. Include the header (marching_cubes_33.h file):
+	```c
+	#include <marching_cubes_33.h>
+	```
+2. You can declare a `_GRD` pointer and then use one of the functions to load files that contain grids (`read_grd`, `read_scanfiles`, `read_raw_file` or `read_dat_file`, found in the MC33_util_grd.c file):
 ```c
 	_GRD* G;
 	G = read_dat_file("filename.dat");
 ```
-
-Or create a `_GRD` from your own grid data, for example:
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;or create a `_GRD` from your own grid data, for example:
 ```c
 	unsigned int nx, ny, nz, i, j, k, l;
 	double r0[3] = {-4, -4, -4}, d[3] = {0.04, 0.04, 0.04};
@@ -150,32 +154,30 @@ Or create a `_GRD` from your own grid data, for example:
 	memcpy(G->r0, r0, sizeof r0);
 	memcpy(G->d, d, sizeof d);
 ```
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;see the file marching_cubes_33.h for the description of the `_GRD` structure.
 
-see the file marching_cubes_33.h for the description of the `_GRD` structure.
-
-Now, you need create a `MC33` structure using the `create_MC33` function:
+3. Create a `MC33` structure using the `create_MC33` function:
 ```c
 	MC33 *M;
 	M = create_MC33(G);
 ```
 
-To calculate the isosurface with the MC33 algorithm:
+4. Calculate the isosurface with the MC33 algorithm:
 ```c
 	surface* S;
 	S = calculate_isosurface(M, isovalue);
 ```
 
-To free the memory occupied by S:
+5. Free the allocated memory for `surface` struct:
 ```c
 	free_surface_memory(S);
 ```
 
-To free the memory occupied by M and G:
+6. Free the memory occupied by `M` and `G`:
 ```c
 	free_MC33(M);
 	free_memory_grd(G);
 ```
-
 
 See marching_cubes_33.h for a description of other functions.
 
@@ -202,18 +204,18 @@ double fs(double x, double y, double z) {
                           3.5, 3.5, 3.5, // coordinates of the opposite corner
                           0.03, 0.03, 0.03, // steps
                           fs);
-  MC33 *MC = 0;
+  MC33 *M = 0;
 	if (G)
-		MC = create_MC33(G);
+		M = create_MC33(G);
   .
   .
-	free_MC33(MC); // release the memory occupied by MC
+	free_MC33(M); // release the memory occupied by M
 	free_memory_grd(G); // release the memory occupied by G
 ```
 
 If fn (the last argument of `generate_grid_from_fn`) is NULL, an empty grid will be created but with memory reserved for the data.
 
-If you already have a data array of the same type as the data in the `_GRD` struct, you can use the `grid_from_data_pointer` function to set the internal pointers to the grid data. This avoids duplicating the data. The external data will not be modified when the free_memory_grd function is used.
+If you already have a data array of the same type as the data in the `_GRD` struct, you can use the `grid_from_data_pointer` function to set the internal pointers to the grid data. This avoids duplicating the data. The external data will not be modified when the `free_memory_grd` function is used.
 
 To display the surface with OpenGL:
 ```c
@@ -221,7 +223,7 @@ To display the surface with OpenGL:
 	glEnableClientState(GL_NORMAL_ARRAY);
 	glEnableClientState(GL_COLOR_ARRAY);
 
-	glVertexPointer(3, GL_FLOAT, 0, &S->V[0]);
+	glVertexPointer(3, (GRD_TYPE_SIZE == 8? GL_DOUBLE: GL_FLOAT), 0, &S->V[0]);
 	glNormalPointer(GL_FLOAT, 0, &S->N[0]);
 	glColorPointer(4, GL_UNSIGNED_BYTE, 0, &S->color[0]);
 
@@ -240,7 +242,11 @@ or:
 		while (--i) {
 			glNormal3fv(S->N[*(++t)]);
 			glColor4ubv((unsigned char *)&(S->color[*t]));
+	#if GRD_TYPE_SIZE == 8
+			glVertex3dv(S->V[*t]);
+	#else
 			glVertex3fv(S->V[*t]);
+	#endif
 		}
 	glEnd();
 ```
@@ -253,7 +259,7 @@ where `M` is a pointer to the `MC33` structure, `iso` is the isovalue (a "`float
 
 See [this link](https://stackoverflow.com/questions/65066235/estimating-size-of-marching-cubes-output-geometry)
 
-Two new funtions where added to save the surface: `write_obj_s` and `write_ply_s`, the first saves the surface data in a Wavefront .obj file, the other saves the data in a "Polygon File Format" (.ply) file.
+Two funtions where added to save the surface: `write_obj_s` and `write_ply_s`, the first saves the surface data in a Wavefront .obj file, the other saves the data in a "Polygon File Format" (.ply) file.
 
 ---
 
