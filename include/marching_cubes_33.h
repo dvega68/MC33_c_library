@@ -18,6 +18,7 @@
 	January 2022
 	September 2023
 	February 2026
+	March 2026
 	This library is a modified version of the library described in:
 	Vega, D., Abache, J., Coll, D., A Fast and Memory Saving Marching Cubes 33
 	implementation with the correct interior test, Journal of Computer Graphics
@@ -31,7 +32,6 @@
 /*
 //1. Header
 #include <marching_cubes_33.h>
-#include "MC33_util_grd.c"
 
 //2. Read a grid file.
 	_GRD* G = read_dat_file(stagbeetle832x832x494.dat);
@@ -57,14 +57,14 @@
 //#define INTEGER_GRD // Uncomment this define for dataset with integer type
 //#define GRD_TYPE_SIZE 4 // 1, 2, 4 or 8 (8 for double, if not defined INTEGER_GRD)
 //#define GRD_ORTHOGONAL // If defined, the library only works with orthogonal grids.
-//#define MC_NORMAL_NEG // the front and back surfaces are exchanged.
-//#define DEFAULT_SURFACE_COLOR 0xFF80FF40// RGBA 0xAABBGGRR: red 64, green 255, blue 128
+
 /*****************************************************************************/
 
 #define MC33C_VERSION_MAJOR 5
-#define MC33C_VERSION_MINOR 4
+#define MC33C_VERSION_MINOR 5
 
 #if defined(INTEGER_GRD)
+typedef float MC33_real;
 #if GRD_TYPE_SIZE == 4
 /*
 GRD_data_type is the variable type of the grid data, by default it is float.
@@ -76,12 +76,13 @@ typedef unsigned short int GRD_data_type;
 typedef unsigned char GRD_data_type;
 #else
 #error "Incorrect size of the data type. GRD_TYPE_SIZE permitted values: 1, 2 or 4."
-typedef float GRD_data_type;
 #endif
 #elif GRD_TYPE_SIZE == 8
 typedef double GRD_data_type;
+typedef double MC33_real;
 #else
 typedef float GRD_data_type;
+typedef float MC33_real;
 #undef GRD_TYPE_SIZE
 #define GRD_TYPE_SIZE 4
 #endif
@@ -133,11 +134,12 @@ typedef struct {
 /* A is a mask (n & A is equivalent to n % dim1).
 n >> E is equivalent to n / dim1. */
 	unsigned int (*T)[3];
-	float (*V)[3];
+	MC33_real (*V)[3];
 	float (*N)[3];
 	int *color;
 	unsigned int nV, nT;
-	float iso;
+	unsigned int capt, capv;
+	MC33_real iso;
 	union {
 		void *p;
 		long long ul;
@@ -152,23 +154,22 @@ n >> E is equivalent to n / dim1. */
 typedef struct {
 // copy of some variables of the surface structure:
 	unsigned int (*T)[3];
-	float (*V)[3];
+	MC33_real (*V)[3];
 	float (*N)[3];
 	int *color;
 	unsigned int nV, nT;
-	float iso;
+	unsigned int capt, capv;
+	MC33_real iso;
 
 /*memoryfault takes a non-zero value if the system memory is insufficient
 to store the surface.*/
 	int memoryfault;
 
-	unsigned int capt, capv;
-
 // copy of some variables of the _GRD structure:
 	const GRD_data_type ***F;
-	float O[3], D[3], ca, cb;
+	MC33_real O[3], D[3], ca, cb;
 	unsigned int nx, ny, nz;
-	unsigned int (*store)(void *, float *);
+	unsigned int (*store)(void *, MC33_real *);
 #ifndef GRD_ORTHOGONAL
 	double _A[3][3], A_[3][3];
 #endif
@@ -185,7 +186,9 @@ Red 128, green 0, blue 255.
 */
 
 #ifndef GRD_ORTHOGONAL
-extern void (*mult_Abf)(const double (*)[3], float *, float *, int);
+void _multTSA_bf(const double (*A)[3], MC33_real *b, MC33_real *c, int t);
+void _multA_bf(const double (*A)[3], MC33_real* b, MC33_real* c, int t);
+extern void (*mult_Abf)(const double (*)[3], MC33_real *, MC33_real *, int);
 #endif /* GRD_ORTHOGONAL */
 
 /******************************************************************
@@ -229,7 +232,7 @@ Calculates the isosurface (iso is the isovalue) using a MC33 structure
 pointed by M. The return value is a pointer to surface. The pointer will
 be NULL if there is not enough memory. The isovalue is stored in the
 member iso of surface struct.*/
-surface* calculate_isosurface(MC33 *M, float iso);
+surface* calculate_isosurface(MC33 *M, MC33_real iso);
 
 /******************************************************************
 Return the size of surface without calculate it. The function can
@@ -237,7 +240,7 @@ calculate the number of vertices and triangles. If only the size is
 required:
 unsigned long long size = size_of_isosurface(M, v, 0, 0);
 */
-unsigned long long size_of_isosurface(MC33 *M, float iso, unsigned int *nV, unsigned int *nT);
+unsigned long long size_of_isosurface(MC33 *M, MC33_real iso, unsigned int *nV, unsigned int *nT);
 
 /******************************************************************
 Releases the allocated memory occupied by MC33 structure pointed by M.
@@ -248,6 +251,11 @@ void free_MC33(MC33 *M);
 Releases the allocated memory pointed to by S.
 */
 void free_surface_memory(surface *S);
+
+/******************************************************************
+Correct the allocated sizes of S->color, S->N, S->V and S->T.
+*/
+void adjustvectorlenght_s(surface *S);
 
 /******************************************************************
 Free the memory occupied by the _GRD structure pointed to by Z.
@@ -268,7 +276,7 @@ returns -1 if the allocation fails. Example:
 int alloc_F(_GRD* Z);
 
 /******************************************************************
-read_grd read a filename file (the file must be a output *.grd file from the
+read_grd reads a filename file (the file must be a output *.grd file from the
 DMol program), it returns a pointer to struct _GRD that contains all the grid
 data.
 */
@@ -302,11 +310,11 @@ http://www.cg.tuwien.ac.at/research/vis/datasets/
 _GRD* read_dat_file(const char *filename);
 
 /******************************************************************
-	set_data_pointer creates a _GRD struct from an external data array. data
-	must be stored with the nested inner loop running from i = 0 to Nx - 1
-	and the outer loop from k = 0 to Nz - 1. The data will not be erased by
-	free_memory_grd function. The function returns a pointer to the created
-	struct.
+	grid_from_data_pointer creates a _GRD struct from an external data array.
+	The data must be stored with the nested inner loop running from i = 0 to
+	Nx - 1 and the outer loop from k = 0 to Nz - 1. The data will not be erased
+	by the free_memory_grd function. The function returns a pointer to the
+	created struct.
 */
 _GRD* grid_from_data_pointer(unsigned int Nx, unsigned int Ny, unsigned int Nz, GRD_data_type* data);
 
